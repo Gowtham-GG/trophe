@@ -4,12 +4,15 @@ import { deleteEntry, logFood, logQuick } from '@/api/diary'
 import { ruleMessage } from '@/api/errors'
 import { fetchServings, frequentFoods, recentFoods, searchFoods } from '@/api/foods'
 import { saveExternalFood, searchOnline, SOURCE_LABEL, usdaFood } from '@/api/online'
+import { logQuickLine } from '@/api/quickLine'
 import { listTemplates, logTemplate } from '@/api/templates'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useDebounced } from '@/hooks/useDebounced'
+import { useQuickLine } from '@/hooks/useQuickLine'
 import { initialAmount, resolveAmount, type AmountState } from '@/lib/amount'
 import { formatDayHeading } from '@/lib/dates'
+import { dishToExternal, loadIndianDishes, searchIndianDishes } from '@/lib/indian'
 import { MEALS } from '@/lib/meals'
 import { describeAmount, fmtG, fmtKcal, scale } from '@/lib/nutrition'
 import type { ExternalFood } from '@/lib/external'
@@ -19,6 +22,7 @@ import { Dialog } from './Dialog'
 import { FoodForm } from './FoodForm'
 import { IconBack, IconPlus, IconSearch } from './icons'
 import { NutritionLine } from './NutritionLine'
+import { QuickLinePreview } from './QuickLinePreview'
 
 type Picked = { food: Pick<Food, 'id' | 'name' | 'brand' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'> & { fiber_g?: number | null }; last?: SuggestedFood }
 type Step = { kind: 'pick' } | { kind: 'amount'; picked: Picked } | { kind: 'new'; name: string } | { kind: 'quick' }
@@ -57,18 +61,27 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   const searchRef = useRef<HTMLInputElement>(null)
 
   const results = useQuery({ queryKey: ['foods', 'search', q], queryFn: () => searchFoods(q, { limit: 25 }), enabled: step.kind === 'pick' && !!q })
+  // "2 roti dal lunch": a typed line is previewed and logged in one go (and isn't sent to the online search)
+  const line = useQuickLine(query.trim(), step.kind === 'pick')
+  const [dropped, setDropped] = useState<string[]>([])
+  const lineItems = (line?.items ?? []).map((item, i) => ({ key: `${i}|${item.text}`, item })).filter((x) => !dropped.includes(x.key))
+  const showLine = !!line && lineItems.length > 0
+  const [lineBusy, setLineBusy] = useState(false)
   // online search waits for a longer pause (Open Food Facts allows ~10 searches a minute); Enter skips the wait
   const [forced, setForced] = useState('')
   const slow = useDebounced(query.trim(), 700)
   const oq = forced === query.trim() ? forced : slow
   const online = useQuery({
-    queryKey: ['online', oq.toLowerCase()], queryFn: () => searchOnline(oq), enabled: step.kind === 'pick' && oq.length >= 3,
+    queryKey: ['online', oq.toLowerCase()], queryFn: () => searchOnline(oq), enabled: step.kind === 'pick' && oq.length >= 3 && !line,
     staleTime: 60 * 60_000, gcTime: 60 * 60_000, retry: false,
   })
   const [opening, setOpening] = useState<string | null>(null)
   // already one of yours? then it's listed above, not again under Online
   const mine = new Set((results.data ?? []).filter((f) => f.external_id).map((f) => `${f.source}:${f.external_id}`))
   const onlineFoods = (online.data?.foods ?? []).filter((f) => !mine.has(`${f.source}:${f.external_id}`))
+  // the bundled Indian dishes are searched right here, as you type
+  const dishes = useQuery({ queryKey: ['indian-dishes'], queryFn: loadIndianDishes, enabled: step.kind === 'pick', staleTime: Infinity, gcTime: Infinity })
+  const dishResults = q && dishes.data ? searchIndianDishes(q, dishes.data).filter((d) => !mine.has(`ifct:${d.id}`)) : []
 
   const pickOnline = async (f: ExternalFood) => {
     const key = `${f.source}:${f.external_id}`
@@ -95,6 +108,24 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
     toast(`Logged ${name} · ${fmtKcal(kcal)} kcal`, { action: { label: 'Undo', onClick: () => void deleteEntry(id).then(() => { refresh(); setAdded((a) => ({ n: a.n - 1, kcal: a.kcal - kcal })) }) } })
     setQuery('')
     back()
+  }
+
+  const logLine = async () => {
+    if (!line || lineBusy) return
+    const toDay = line.day ?? day, toMeal = line.meal ?? meal
+    setLineBusy(true)
+    try {
+      const entries = await logQuickLine(lineItems.map((x) => x.item), toDay, toMeal)
+      const kcal = entries.reduce((sum, e) => sum + e.kcal, 0)
+      refresh()
+      setAdded((a) => ({ n: a.n + entries.length, kcal: a.kcal + kcal }))
+      const where = `${mealLabel(toMeal)}${toDay !== day ? `, ${formatDayHeading(toDay, timezone)}` : ''}`
+      toast(`Logged ${entries.length} item${entries.length === 1 ? '' : 's'} · ${fmtKcal(kcal)} kcal to ${where}`, {
+        action: { label: 'Undo', onClick: () => void Promise.all(entries.map((e) => deleteEntry(e.id))).then(() => { refresh(); setAdded((a) => ({ n: a.n - entries.length, kcal: a.kcal - kcal })) }) },
+      })
+      setQuery('')
+      setDropped([])
+    } catch (err) { toast(ruleMessage(err, 'Couldn’t log that.'), { kind: 'error' }) } finally { setLineBusy(false); searchRef.current?.focus() }
   }
 
   const repeat = async (s: SuggestedFood) => {
@@ -136,17 +167,23 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
         <div>
           <label className="relative block">
             <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search foods — yours and online…" aria-label="Search foods"
+            <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search foods, or type “2 roti, dal”…" aria-label="Search foods, or type what you had"
               onKeyDown={(e) => {
                 if (e.key !== 'Enter') return
                 e.preventDefault()
+                if (showLine) return void logLine()
                 if (results.data?.[0]) setStep({ kind: 'amount', picked: { food: results.data[0] } })
+                else if (dishResults[0]) void pickOnline(dishToExternal(dishResults[0]))
                 else setForced(query.trim()) // nothing of yours: search online now
               }}
               className="field pl-10" />
           </label>
 
           <div className="mt-3 max-h-[50vh] min-h-40 overflow-y-auto">
+            {showLine && (
+              <QuickLinePreview items={lineItems} day={line.day ?? day} meal={line.meal ?? meal} busy={lineBusy}
+                onDrop={(key) => setDropped((d) => [...d, key])} onSearch={(text) => { setQuery(text); searchRef.current?.focus() }} onLog={() => void logLine()} />
+            )}
             {q ? (
               <>
                 {results.isLoading && <div className="skeleton h-12" />}
@@ -157,7 +194,23 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
                   ))}
                 </ul>
 
-                {query.trim().length >= 3 && (
+                {!!dishResults.length && (
+                  <div className="mt-3">
+                    <p className="label-caps mb-1 px-1">Indian dishes</p>
+                    <ul>
+                      {dishResults.map((d) => {
+                        const s = d.servings[0]
+                        return (
+                          <FoodRow key={d.id} name={d.name} brand={null}
+                            detail={<>{s ? `${s.label} · ${fmtKcal(scale(d, s.grams).kcal)} kcal` : `${fmtKcal(d.kcal)} kcal / 100 g`} · <span className="text-faint">{opening === `ifct:${d.id}` ? 'Adding…' : 'typical home recipe'}</span></>}
+                            onPick={() => void pickOnline(dishToExternal(d))} />
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                {query.trim().length >= 3 && !line && (
                   <div className="mt-3">
                     <p className="label-caps mb-1 px-1">Online</p>
                     {(online.isFetching || (oq !== query.trim() && !online.data)) && <div className="space-y-1.5 px-1"><div className="skeleton h-11" /><div className="skeleton h-11 opacity-60" /></div>}
@@ -174,7 +227,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
                     {online.isSuccess && <p className="px-3 pt-2 text-[11px] text-faint">Online data: Open Food Facts (ODbL) and USDA FoodData Central. Check packets — crowd-sourced numbers can be off.</p>}
                   </div>
                 )}
-                {results.isSuccess && results.data.length === 0 && query.trim().length < 3 && <p className="px-3 py-3 text-sm text-faint">None of your foods match “{q}”. Keep typing to search online, or create it below.</p>}
+                {results.isSuccess && results.data.length === 0 && !dishResults.length && !showLine && query.trim().length < 3 && <p className="px-3 py-3 text-sm text-faint">None of your foods match “{q}”. Keep typing to search online, or create it below.</p>}
               </>
             ) : (
               <>
@@ -212,7 +265,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <button onClick={() => setStep({ kind: 'new', name: query.trim() })} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-accent hover:bg-hover"><IconPlus size={16} /> New food{query.trim() && ` “${query.trim()}”`}</button>
+            <button onClick={() => setStep({ kind: 'new', name: showLine ? '' : query.trim() })} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-accent hover:bg-hover"><IconPlus size={16} /> New food{query.trim() && !showLine && ` “${query.trim()}”`}</button>
             <button onClick={() => setStep({ kind: 'quick' })} className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-hover hover:text-ink">Quick add calories</button>
             <span className="flex-1" />
             {added.n > 0 && <span className="text-xs text-muted tabular-nums">{added.n} added{added.kcal > 0 && ` · ${fmtKcal(added.kcal)} kcal`}</span>}

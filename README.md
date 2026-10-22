@@ -30,7 +30,7 @@ is multi-user by construction even though it is built for personal use.
 |---|---|---|
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
-| 2. Finding food | Online search (Open Food Facts + USDA) **done**; Indian dishes, barcode scan, quick add by typing (`2 roti dal lunch`), recipes | in progress |
+| 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`) **done**; barcode scan, recipes | in progress |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
@@ -90,7 +90,8 @@ without a food is a quick add (typed calories).
 **RPCs** (all `SECURITY INVOKER`, RLS applies): `day_summary(day)` (goal, totals, per meal), `range_summary(from, to)`
 (per day + verdict: empty / logged / under < 90 % / on / over > 110 % of that day's goal), `recent_foods(meal)`,
 `frequent_foods(meal)` (with last amount, for one-tap re-logging), `search_foods(query)`, `copy_entries(from, to, meal,
-to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`.
+to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`,
+`save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount).
 
 ### Online food search
 
@@ -107,6 +108,34 @@ real responses in `tests/fixtures/`).
 * `npm run dev` runs the same function through a small Vite plugin (`vite.config.ts`) — no Vercel CLI needed.
 * `USDA_API_KEY` (server-side env, `.env.local` + Vercel): free at https://api.data.gov/signup/. Without it the shared
   `DEMO_KEY` allows only ~10 USDA requests an hour.
+
+### Indian dishes
+
+`src/data/indian-dishes.json` is a starter list of ~100 everyday dishes (roti, dal, idli, biryani, chai…) with
+servings people actually use (`1 roti`, `1 katori`, `1 plate`). It ships with the app, is loaded only when the log
+dialog opens, and is searched in the browser: no rows, no API calls. Picking a dish copies it into your foods through
+`save_external_food()` (source `ifct`, a name kept from the original plan; the data is not from IFCT).
+
+The numbers are **Trophe's own estimates for a typical home recipe** (per 100 g as eaten), not copied from a licensed
+table — the Indian Food Composition Tables (NIN) are copyrighted and not openly licensed. Home cooking varies a lot
+(oil, ghee), so treat them as a starting point and edit your copy. A unit test checks every dish fits the foods table
+and that its calories agree with its macros.
+
+### Quick add by typing
+
+Type `2 roti dal lunch`, `150g paneer, chai yesterday` or `half katori rice` in the log dialog: a preview lists each
+food with its amount and calories, and Enter (or the button) logs them all in one insert. The parser
+(`src/lib/quickLog.ts`, unit-tested) runs in the browser against your foods (`quick_log_foods()`) and the Indian
+dishes:
+
+* **Foods**: full names, a dish's other names (`chapati` = `roti`), `brand name`, or a serving's own word (`roti`
+  finds your food with a `1 roti` serving). Longer names win (`masala dosa` over `dosa`); on an equally good match your
+  own food beats a bundled dish. Unknown words come back as "Not in your foods: … search".
+* **Amounts**: `150g`, `200 ml`, `2`, `½`, `1 1/2`, `one and a half`, `2x`; household measures (`katori`, `bowl`,
+  `plate`, `cup`, `glass`, `tbsp`, `tsp`, `piece`…) use the food's own serving of that name, else a typical size
+  (katori 150 g, glass 250 g…). No amount: what you had last time, else one serving. A bare number of 20 or more is grams.
+* **When**: `breakfast` / `lunch` / `snacks` / `dinner` (also `morning`, `evening`, `tonight`), `yesterday`,
+  `day before yesterday`, `last night`, a weekday (always the most recent past one).
 
 ---
 
@@ -135,6 +164,7 @@ real responses in `tests/fixtures/`).
 20261022110300_trophe_06_rpc.sql        day/range summaries, recent/frequent, search, copy, saved-meal RPCs
 20261022120000_trophe_07_anon_functions.sql  no function executable by anon/PUBLIC (see its header)
 20261022130000_trophe_08_external_foods.sql  save_external_food(): keep an online food when you pick it
+20261022140000_trophe_09_quick_log.sql       quick_log_foods(): your foods, servings and last amounts for quick add
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -202,7 +232,8 @@ npm run dev          # http://localhost:5173 — sign in with your Argus/Mneme a
 ## 7. Testing
 
 ```bash
-npm test          # unit tests (vitest): env checks, dates/timezones, themes, meals, nutrition maths, amounts
+npm test          # unit tests (vitest): env checks, dates/timezones, themes, meals, nutrition maths, amounts,
+                  #   online-food normalising, the Indian dishes list, the quick-add parser
 npm run test:sql  # SQL suite in a throwaway local Postgres (needs initdb/pg_ctl/psql)
 npm run test:int  # integration: real API code + real migrations through PostgREST (needs podman or docker)
 npm run lint && npm run build

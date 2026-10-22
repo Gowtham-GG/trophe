@@ -20,7 +20,12 @@ import * as foods from '@/api/foods'
 import * as diary from '@/api/diary'
 import * as goals from '@/api/goals'
 import * as templates from '@/api/templates'
+import { logQuickLine } from '@/api/quickLine'
+import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
+import dishes from '@/data/indian-dishes.json'
+import type { IndianDish } from '@/lib/indian'
+import { parseQuickLog } from '@/lib/quickLog'
 import { scale } from '@/lib/nutrition'
 
 const A = 'aaaaaaaa-0000-0000-0000-00000000000a'
@@ -138,5 +143,44 @@ describe('diary through PostgREST (Phase 1)', () => {
   it('a rule broken in the database comes back with its own wording', async () => {
     as(A)
     await expect(templates.saveMealAsTemplate('Empty', '2030-01-01', 'lunch')).rejects.toMatchObject({ code: 'P0001', message: expect.stringContaining('Nothing to save') })
+  })
+})
+
+describe('quick add by typing', () => {
+  // the same candidate list useQuickLine builds: your foods, then the bundled dishes you haven't saved
+  const candidates = async (): Promise<QuickCandidate[]> => {
+    const mine = await foods.quickLogFoods()
+    const saved = new Set(mine.map((f) => f.external_id))
+    return [
+      ...mine.map((f): QuickCandidate => ({ ...f, tier: 0, ref: { kind: 'mine', id: f.id } })),
+      ...(dishes as IndianDish[]).filter((d) => !saved.has(d.id)).map((d): QuickCandidate => ({ ...d, tier: 1, ref: { kind: 'dish', dish: d } })),
+    ]
+  }
+
+  it('logs a typed line in one go, copying bundled dishes into your foods once', async () => {
+    as(A)
+    const oats = await foods.createFood({ name: 'Oats', brand: null, barcode: null, kcal: 380, protein_g: 13, carbs_g: 66, fat_g: 7, fiber_g: 10, sugar_g: null, sodium_mg: null })
+    await foods.saveServings(oats.id, [{ label: '1 cup', grams: 40 }])
+
+    const line = parseQuickLog('2 cups oats, 3 idli breakfast', await candidates(), '2026-10-24')
+    const entries = await logQuickLine(line.items, '2026-10-24', line.meal!)
+    expect(entries.map((e) => [e.meal, e.name, e.grams, e.serving_label, e.serving_qty, e.kcal])).toEqual([
+      ['breakfast', 'Oats', 80, '1 cup', 2, 304],
+      ['breakfast', 'Idli', 120, '1 idli', 3, 162],
+    ])
+
+    // the dish is now one of yours, with its servings and what you had
+    const mine = await foods.quickLogFoods()
+    expect(mine.find((f) => f.external_id === 'idli')).toMatchObject({ name: 'Idli', source: 'ifct', uses: 1, servings: [{ label: '1 idli', grams: 40 }], last: { grams: 120, serving_qty: 3 } })
+    expect(mine.find((f) => f.name === 'Oats')).toMatchObject({ uses: 1, last: { grams: 80, serving_label: '1 cup' } })
+
+    // logging it again uses your copy instead of making another
+    const again = parseQuickLog('idli', await candidates(), '2026-10-24')
+    expect(again.items[0].food?.ref.kind).toBe('mine')
+    await logQuickLine(again.items, '2026-10-24', 'dinner')
+    expect((await foods.searchFoods('idli')).length).toBe(1)
+
+    as(B)
+    expect(await foods.quickLogFoods()).toEqual([])
   })
 })

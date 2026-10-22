@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { Food, FoodServing, SuggestedFood } from '@/types/db'
+import type { Food, FoodServing, QuickLogFood, SuggestedFood } from '@/types/db'
 import { toError } from './errors'
 
 const FOOD_COLUMNS = 'id,user_id,name,brand,source,external_id,barcode,kcal,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,archived_at,created_at,updated_at'
@@ -62,6 +62,13 @@ export async function recentFoods(meal: string | null, limit = 12): Promise<Sugg
   const { data, error } = await supabase.rpc('recent_foods', { p_meal: meal, p_limit: limit })
   if (error) throw toError(error)
   return (data as SuggestedFood[]) ?? []
+}
+
+/** Every active food with servings and last amount, most logged first (what quick add by typing matches against). */
+export async function quickLogFoods(): Promise<QuickLogFood[]> {
+  const { data, error } = await supabase.rpc('quick_log_foods', {})
+  if (error) throw toError(error)
+  return (data as QuickLogFood[]) ?? []
 }
 
 export async function frequentFoods(meal: string | null, limit = 12): Promise<SuggestedFood[]> {

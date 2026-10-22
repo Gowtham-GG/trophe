@@ -29,4 +29,4 @@ export async function saveExternalFood(f: ExternalFood): Promise<string> {
   return data as string
 }
 
-export const SOURCE_LABEL: Record<string, string> = { off: 'Open Food Facts', usda: 'USDA', ifct: 'Indian foods', custom: 'Yours' }
+export const SOURCE_LABEL: Record<string, string> = { off: 'Open Food Facts', usda: 'USDA', ifct: 'Indian dishes', custom: 'Yours' }

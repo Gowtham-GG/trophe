@@ -114,6 +114,23 @@ export interface SuggestedFood {
   uses: number
 }
 
+/** quick_log_foods(): an active food with its servings and last amount, for the quick-add parser. */
+export interface QuickLogFood {
+  id: string
+  name: string
+  brand: string | null
+  source: Food['source']
+  external_id: string | null
+  kcal: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  fiber_g: number | null
+  uses: number
+  servings: Pick<FoodServing, 'id' | 'label' | 'grams'>[]
+  last: { grams: number; serving_label: string | null; serving_qty: number | null } | null
+}
+
 export interface MealTemplateItem {
   id: string
   food_id: string

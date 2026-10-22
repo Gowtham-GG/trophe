@@ -30,6 +30,16 @@ export async function logFood(e: { day: string; meal: string; food_id: string; g
   return data as DiaryEntry
 }
 
+export type FoodEntry = Parameters<typeof logFood>[0]
+
+/** Several foods in one insert (quick add by typing): all are logged, or none. */
+export async function logFoods(entries: FoodEntry[]): Promise<DiaryEntry[]> {
+  if (!entries.length) return []
+  const { data, error } = await supabase.from('diary_entries').insert(entries.map((e, i) => ({ id: crypto.randomUUID(), position: i, ...e }))).select(ENTRY_COLUMNS)
+  if (error) throw toError(error)
+  return (data as DiaryEntry[]) ?? []
+}
+
 export interface QuickEntry { day: string; meal: string; name: string; kcal: number; protein_g: number; carbs_g: number; fat_g: number }
 
 /** A quick add: calories (and optional macros) typed directly, no food. */

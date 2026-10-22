@@ -262,6 +262,31 @@ begin
   perform t.logout();
 end $$;
 
+-- ===================================================== 11. quick-add foods ==
+do $$
+declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; f uuid; g uuid; j jsonb;
+begin
+  perform t.login(a);
+  insert into trophe.foods (name, kcal) values ('Quick roti', 300) returning id into f;
+  insert into trophe.foods (name, kcal, archived_at) values ('Quick gone', 100, now()) returning id into g;
+  insert into trophe.food_servings (food_id, label, grams, position) values (f, '1 roti', 40, 0), (f, '1 big roti', 60, 1);
+  insert into trophe.diary_entries (day, meal, food_id, grams, serving_label, serving_qty, logged_at) values
+    ('2026-10-01', 'lunch', f, 40, '1 roti', 1, now() - interval '1 day'),
+    ('2026-10-02', 'lunch', f, 120, '1 big roti', 2, now());
+  j := (select e from jsonb_array_elements(trophe.quick_log_foods()) e where e->>'id' = f::text);
+  perform t.ok((j->>'uses')::int = 2 and j->'last' = '{"grams": 120.0, "serving_label": "1 big roti", "serving_qty": 2.00}'::jsonb, 'quick_log_foods: uses and the last amount');
+  perform t.ok(jsonb_array_length(j->'servings') = 2 and j->'servings'->0->>'label' = '1 roti', 'quick_log_foods: servings in order');
+  perform t.ok(not exists (select 1 from jsonb_array_elements(trophe.quick_log_foods()) with ordinality x(e, i)
+                           join jsonb_array_elements(trophe.quick_log_foods()) with ordinality y(e, i) on y.i = x.i + 1
+                           where (y.e->>'uses')::int > (x.e->>'uses')::int), 'quick_log_foods: most logged first');
+  perform t.ok(not exists (select 1 from jsonb_array_elements(trophe.quick_log_foods()) e where e->>'id' = g::text), 'quick_log_foods: archived foods are left out');
+  perform t.logout();
+
+  perform t.login('bbbbbbbb-0000-0000-0000-000000000002');
+  perform t.ok(not exists (select 1 from jsonb_array_elements(trophe.quick_log_foods()) e where e->>'id' = f::text), 'quick_log_foods: only your own foods');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin
