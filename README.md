@@ -29,7 +29,7 @@ is multi-user by construction even though it is built for personal use.
 | Phase | What you get | Status |
 |---|---|---|
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
-| 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, goal wizard, diary calendar | next |
+| 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
 | 2. Finding food | Search your foods → Indian dishes (bundled) → Open Food Facts → USDA; barcode scan; quick add (`2 roti dal lunch`); recipes | |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
@@ -75,9 +75,22 @@ references auth.users on delete cascade` and one RLS policy `user_id = (select a
 
 | Table | Purpose |
 |---|---|
-| `settings` | timezone (decides what "today" means), theme. Created lazily by the app's first upsert |
+| `settings` | timezone (decides what "today" means), theme, body profile (sex, birth year, height, activity). Created lazily by the app's first upsert |
+| `foods` | your foods: name, brand, source, nutrients **per 100 g** (kcal, protein, carbs, fat; optional fibre, sugar, sodium), `archived_at` |
+| `food_servings` | "1 roti = 40 g", "1 katori = 150 g" per food |
+| `diary_entries` | day (local), meal, food, grams, how it was entered (`2 × 1 roti`), and **its own copy of the nutrients** |
+| `goals` | kcal + macros + fibre from `effective_from`; a day is judged by the goal in force then |
+| `weigh_ins` | one weight per day (the goal wizard records it; trend in Phase 3) |
+| `meal_templates`, `meal_template_items` | saved meals ("usual breakfast") |
 
-Phase 1 adds `goals`, `foods`, `food_servings`, `meal_templates`, `diary_entries` and the summary functions.
+**History never changes.** `diary_before_write` copies the food's nutrients into the entry when it's logged. Editing
+or deleting the food later leaves past days as they were; changing an entry's grams rescales its own copy. An entry
+without a food is a quick add (typed calories).
+
+**RPCs** (all `SECURITY INVOKER`, RLS applies): `day_summary(day)` (goal, totals, per meal), `range_summary(from, to)`
+(per day + verdict: empty / logged / under < 90 % / on / over > 110 % of that day's goal), `recent_foods(meal)`,
+`frequent_foods(meal)` (with last amount, for one-tap re-logging), `search_foods(query)`, `copy_entries(from, to, meal,
+to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`.
 
 ---
 
@@ -100,6 +113,10 @@ Phase 1 adds `goals`, `foods`, `food_servings`, `meal_templates`, `diary_entries
 ```
 20261022100000_trophe_01_schema.sql     schema, grants
 20261022100100_trophe_02_settings.sql   settings table, RLS
+20261022110000_trophe_03_foods.sql      foods, servings, body profile on settings
+20261022110100_trophe_04_goals.sql      goals (by start date), weigh-ins, goal_for()
+20261022110200_trophe_05_diary.sql      diary entries (copied nutrients), saved meals
+20261022110300_trophe_06_rpc.sql        day/range summaries, recent/frequent, search, copy, saved-meal RPCs
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -162,14 +179,15 @@ npm run dev          # http://localhost:5173 — sign in with your Argus/Mneme a
 ## 7. Testing
 
 ```bash
-npm test          # unit tests (vitest): env checks, dates/timezones, themes, meals
+npm test          # unit tests (vitest): env checks, dates/timezones, themes, meals, nutrition maths, amounts
 npm run test:sql  # SQL suite in a throwaway local Postgres (needs initdb/pg_ctl/psql)
 npm run test:int  # integration: real API code + real migrations through PostgREST (needs podman or docker)
 npm run lint && npm run build
 ```
 
 * **SQL suite** (`supabase/tests/trophe_tests.sql`, rolled back at the end): settings defaults and checks, upsert
-  behaviour, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
+  behaviour, food checks, nutrient copying and history staying fixed, goals by date, range verdicts, recent/frequent,
+  search, copying and saved meals, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
   anon has no access, and coexistence checks (no trigger on `auth.users`, nothing in `public`, RLS on every table).
   The runner also applies every migration twice to prove they are idempotent. It never touches your Supabase project.
 * **Integration** (`npm run test:int`): `initdb/pg_ctl`, `psql`, `podman` (or `CONTAINER_CLI=docker`) and network

@@ -4,7 +4,7 @@ import { fetchSettings, saveSettings, type SettingsPatch } from '@/api/settings'
 import { useAuth } from '@/hooks/useAuth'
 import { browserTimezone, isValidTimezone } from '@/lib/dates'
 import { DEFAULT_THEME, normalizePref, resolveTheme, type ThemeId, type ThemePref } from '@/lib/themes'
-import type { Settings } from '@/types/db'
+import type { Activity, Settings, Sex } from '@/types/db'
 
 interface SettingsValue {
   timezone: string
@@ -12,12 +12,15 @@ interface SettingsValue {
   theme: ThemePref
   /** the concrete theme currently applied */
   activeTheme: ThemeId
+  /** body profile for the goal wizard (all optional) */
+  profile: { sex: Sex | null; birth_year: number | null; height_cm: number | null; activity: Activity | null }
   ready: boolean
   update: (patch: SettingsPatch) => Promise<void>
 }
 
 const SettingsContext = createContext<SettingsValue>({
-  timezone: 'UTC', theme: DEFAULT_THEME, activeTheme: DEFAULT_THEME, ready: false, update: async () => {},
+  timezone: 'UTC', theme: DEFAULT_THEME, activeTheme: DEFAULT_THEME,
+  profile: { sex: null, birth_year: null, height_cm: null, activity: null }, ready: false, update: async () => {},
 })
 const THEME_KEY = 'trophe-theme'
 
@@ -38,6 +41,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const timezone = q.data?.timezone && isValidTimezone(q.data.timezone) ? q.data.timezone : browserTimezone()
   const theme: ThemePref = q.data ? normalizePref(q.data.theme) : local
+  const d = q.data
+  const profile = useMemo(() => ({ sex: d?.sex ?? null, birth_year: d?.birth_year ?? null, height_cm: d?.height_cm ?? null, activity: d?.activity ?? null }),
+    [d?.sex, d?.birth_year, d?.height_cm, d?.activity])
 
   const [dark, setDark] = useState(prefersDark)
   useEffect(() => {
@@ -73,8 +79,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [user, q.isSuccess, q.data, update])
 
   const value = useMemo(
-    () => ({ timezone, theme, activeTheme: resolveTheme(theme, dark), ready: !user || q.isSuccess, update }),
-    [timezone, theme, dark, user, q.isSuccess, update],
+    () => ({ timezone, theme, activeTheme: resolveTheme(theme, dark), profile, ready: !user || q.isSuccess, update }),
+    [timezone, theme, dark, profile, user, q.isSuccess, update],
   )
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
 }

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { signOut } from '@/api/auth'
+import { useLog } from '@/contexts/LogContext'
 import { useHotkeys } from '@/hooks/useHotkeys'
 import { useOnline } from '@/hooks/useOnline'
 import { Brand } from './Brand'
 import { Dialog } from './Dialog'
 import { IconDiary, IconFood, IconMore, IconPlus, IconProgress, IconSettings, IconToday } from './icons'
-import { LogDialog } from './LogDialog'
 
 function SignOutIcon() {
   return (
@@ -35,10 +35,10 @@ export function Shell() {
   const online = useOnline()
   const [help, setHelp] = useState(false)
   const [more, setMore] = useState(false)
-  const [log, setLog] = useState(false)
+  const log = useLog()
 
   useHotkeys([
-    { combo: 'l', handler: (e) => { e.preventDefault(); setLog(true) } },
+    { combo: 'l', handler: (e) => { e.preventDefault(); log.open() } },
     { combo: 'g', handler: (e) => { e.preventDefault(); nav('/') } },
     { combo: '?', handler: (e) => { e.preventDefault(); setHelp(true) } },
   ])
@@ -77,7 +77,7 @@ export function Shell() {
         <div className="glass-strong pointer-events-auto relative flex items-center gap-1 rounded-full p-1.5">
           <DockLink to="/" end label="Today" icon={<IconToday />} />
           <DockLink to="/diary" label="Diary" icon={<IconDiary />} />
-          <button aria-label="Log food (L)" title="Log food (L)" className="bg-accent mx-1 flex size-12 items-center justify-center rounded-full text-on-accent active:scale-95" onClick={() => setLog(true)}>
+          <button aria-label="Log food (L)" title="Log food (L)" className="bg-accent mx-1 flex size-12 items-center justify-center rounded-full text-on-accent active:scale-95" onClick={() => log.open()}>
             <IconPlus size={24} />
           </button>
           <DockLink to="/progress" label="Progress" icon={<IconProgress />} hideOnSmall />
@@ -112,7 +112,6 @@ export function Shell() {
         </dl>
       </Dialog>
 
-      <LogDialog open={log} onClose={() => setLog(false)} />
     </div>
   )
 }

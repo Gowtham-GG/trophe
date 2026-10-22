@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { LogProvider } from '@/contexts/LogContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -25,6 +26,7 @@ export default function App() {
         <SettingsProvider>
           <ToastProvider>
             <BrowserRouter>
+              <LogProvider>
               <Suspense fallback={Fallback}>
                 <Routes>
                   <Route path="/login" element={<Login />} />
@@ -38,6 +40,7 @@ export default function App() {
                   </Route>
                 </Routes>
               </Suspense>
+              </LogProvider>
             </BrowserRouter>
           </ToastProvider>
         </SettingsProvider>
