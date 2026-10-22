@@ -1,4 +1,5 @@
 import { DayView } from '@/components/DayView'
+import { InsightList } from '@/components/InsightCards'
 import { useSettings } from '@/contexts/SettingsContext'
 import { formatFullDate, todayKey } from '@/lib/dates'
 
@@ -13,6 +14,7 @@ export function Home() {
           <p className="label-caps">{formatFullDate(day)}</p>
           <h1 className="mt-1 text-[34px] font-bold leading-tight">Today</h1>
         </header>
+        <div className="mb-4 empty:hidden"><InsightList today={day} limit={2} dismissible /></div>
         <DayView day={day} />
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { copyEntries } from '@/api/diary'
 import { Card } from '@/components/Card'
@@ -15,7 +16,9 @@ export function Diary() {
   const { toast } = useToast()
   const qc = useQueryClient()
   const today = todayKey(tz)
-  const [day, setDay] = useState(today)
+  // /diary?day=2026-10-21 opens that day (links from Today's insights)
+  const [params] = useSearchParams()
+  const [day, setDay] = useState(() => { const d = params.get('day') ?? ''; return /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today ? d : today })
 
   const copyToToday = async () => {
     try {

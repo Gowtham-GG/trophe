@@ -442,6 +442,37 @@ begin
   perform t.logout();
 end $$;
 
+-- ============================================================ 16. insights ==
+insert into auth.users (id, email) values ('ffffffff-0000-0000-0000-000000000006', 'f@test'), ('99999999-0000-0000-0000-000000000007', 'g@test');
+do $$
+declare today date := '2026-10-29'; j jsonb;
+begin
+  -- F: logs most days but not yesterday; low protein and fibre; weekends ~500 kcal higher; little water
+  perform t.login('ffffffff-0000-0000-0000-000000000006');
+  perform t.ok(trophe.insights(today) = '[]'::jsonb, 'nothing logged: no insights');
+  insert into trophe.goals (effective_from, kcal, protein_g, carbs_g, fat_g, fiber_g, pace_kg_week) values ('2026-09-01', 2000, 130, 220, 65, 28, -0.5);
+  insert into trophe.diary_entries (day, meal, name, kcal, protein_g, fiber_g)
+  select today - g, 'lunch', 'x', case when extract(isodow from today - g) >= 6 then 2400 else 1900 end, 90, 10
+  from generate_series(2, 28) g;
+  insert into trophe.water_entries (day, ml) values (today - 2, 500), (today - 3, 500), (today - 4, 750);
+  j := trophe.insights(today);
+  perform t.ok((select jsonb_agg(e->>'kind') from jsonb_array_elements(j) e) = '["protein_low", "weekend_overshoot", "fibre_low", "water_low", "missed_yesterday"]'::jsonb,
+               'the rules that apply, warnings first: ' || (select string_agg(e->>'kind', ', ') from jsonb_array_elements(j) e));
+  perform t.ok(j->0 = '{"kind": "protein_low", "tone": "warn", "data": {"days": 6, "of": 6, "avg": 90, "goal": 130}}'::jsonb, 'an insight carries the numbers it is about');
+  perform t.ok((select e->'data' from jsonb_array_elements(j) e where e->>'kind' = 'weekend_overshoot') = '{"weekend": 2400, "weekday": 1900}'::jsonb, 'weekend numbers');
+  perform t.logout();
+
+  -- G: eating far under target and losing ~1.4 kg a week against a 0.5 kg plan
+  perform t.login('99999999-0000-0000-0000-000000000007');
+  insert into trophe.goals (effective_from, kcal, protein_g, carbs_g, fat_g, pace_kg_week) values ('2026-09-01', 2000, 130, 220, 65, -0.5);
+  insert into trophe.diary_entries (day, meal, name, kcal, protein_g) select today - g, 'lunch', 'x', 1400, 130 from generate_series(1, 7) g;
+  insert into trophe.weigh_ins (day, kg) select today - g, 84 - (60 - g) * 0.2 from generate_series(0, 60) g;
+  j := trophe.insights(today);
+  perform t.ok((select jsonb_agg(e->>'kind') from jsonb_array_elements(j) e) = '["under_eating", "losing_fast"]'::jsonb,
+               'under target and losing faster than planned: ' || (select string_agg(e->>'kind', ', ') from jsonb_array_elements(j) e));
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

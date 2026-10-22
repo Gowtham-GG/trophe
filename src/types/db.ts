@@ -156,6 +156,9 @@ export interface MaintenanceEstimate {
   suggested_kcal: number | null
 }
 
+/** insights(): one rule that applies to your last days; the app words it (src/lib/insights.ts). */
+export interface Insight { kind: string; tone: 'warn' | 'note' | 'good'; data: Record<string, number | string> }
+
 export interface MacroTotals { kcal: number; protein_g: number; carbs_g: number; fat_g: number; entries: number }
 
 export interface DaySummary {

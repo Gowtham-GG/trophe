@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { waterRange } from '@/api/body'
 import { Card } from '@/components/Card'
+import { InsightList } from '@/components/InsightCards'
 import { MeasurementsCard, WeightCard } from '@/components/progress/BodyCards'
 import { EatingCard, StreaksCard } from '@/components/progress/EatingCards'
 import { MaintenanceCard } from '@/components/progress/MaintenanceCard'
@@ -51,6 +52,7 @@ export function Progress() {
     <div className="h-full overflow-y-auto">
       <div className="page-top mx-auto max-w-3xl space-y-4 px-4 pb-32 lg:px-6 lg:pb-8">
         <h1 className="text-[28px] font-semibold leading-tight">Progress</h1>
+        <InsightList today={to} />
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Range">
           {RANGES.map((r) => (
             <button key={r.id} role="radio" aria-checked={range === r.id} onClick={() => choose(r.id)}

@@ -32,7 +32,7 @@ is multi-user by construction even though it is built for personal use.
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
-| 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend **done**; insight cards, full-screen confirmations | in progress |
+| 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards **done**; full-screen confirmations | in progress |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
@@ -96,7 +96,7 @@ without a food is a quick add (typed calories).
 to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`,
 `save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount),
 `save_recipe(id, name, items, cooked_g, portions)`, `weight_trend(from, to)`, `weight_summary()`, `water_range(from, to)`,
-`nutrition_periods(from, to, week|month)`, `nutrition_stats(from, to)`, `streaks(today)`, `maintenance_estimate(today)`.
+`nutrition_periods(from, to, week|month)`, `nutrition_stats(from, to)`, `streaks(today)`, `maintenance_estimate(today)`, `insights(today)`.
 
 ### Online food search
 
@@ -179,6 +179,22 @@ can't be a real maintenance (outside 1,000–6,000 kcal: usually meals not logge
 kcal). **Use** on Progress starts a new goal today with protein and fat kept and carbs taking the difference
 (`rescaleGoal`); past days keep their goal as always.
 
+### Insights
+
+Plain rules over your own last days, no AI. `insights(today)` decides which apply and returns them as
+`{kind, tone, data}` (warnings first); the app words them (`src/lib/insights.ts`, so a newer rule an older app doesn't
+know is skipped, not shown broken). Today shows the first two, each dismissible for the day; Progress shows all.
+
+| Rule | When (7 days before today unless noted) |
+|---|---|
+| protein low | protein under 90 % of the goal on 4+ logged days |
+| well under target | 4+ days under and the average below 80 % of the goal |
+| losing fast / trend rising / falling | the weight trend's pace against the goal's pace |
+| weekends run higher | last 4 weeks: weekend average ≥ 300 kcal above weekdays |
+| fibre low, water low | average below 70 % of the goal (4+ logged days; 3+ days of water) |
+| nothing logged yesterday | you logged 7+ of the 13 days before |
+| on-target streak / steady week | 3+ days on target in a row; or the week's average within 5 % of the goal |
+
 ### Recipes
 
 Foods → **New recipe**: add ingredients (your foods or Indian dishes) with amounts, optionally the cooked weight
@@ -221,6 +237,7 @@ keeps its numbers until it's saved again.
 20261022160000_trophe_11_body.sql            measurements, water, water goal; weight_trend() / weight_summary()
 20261022170000_trophe_12_eating_trends.sql   nutrition_periods(), nutrition_stats(), streaks()
 20261022180000_trophe_13_adaptive_target.sql goals.pace_kg_week; maintenance_estimate()
+20261022190000_trophe_14_insights.sql        insights(): the rules behind Today's insight cards
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -299,7 +316,7 @@ npm run lint && npm run build
 
 * **SQL suite** (`supabase/tests/trophe_tests.sql`, rolled back at the end): settings defaults and checks, upsert
   behaviour, food checks, nutrient copying and history staying fixed, goals by date, range verdicts, recent/frequent,
-  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
+  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, insight rules, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
   anon has no access, and coexistence checks (no trigger on `auth.users`, nothing in `public`, RLS on every table).
   The runner also applies every migration twice to prove they are idempotent. It never touches your Supabase project.
 * **Integration** (`npm run test:int`): `initdb/pg_ctl`, `psql`, `podman` (or `CONTAINER_CLI=docker`) and network
