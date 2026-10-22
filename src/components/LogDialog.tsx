@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteEntry, logFood, logQuick } from '@/api/diary'
+import { daySummary, deleteEntry, fetchDayEntries, logFood, logQuick } from '@/api/diary'
 import { ruleMessage } from '@/api/errors'
 import { fetchServings, frequentFoods, recentFoods, searchFoods } from '@/api/foods'
 import { saveExternalFood, searchOnline, SOURCE_LABEL, usdaFood } from '@/api/online'
@@ -11,7 +11,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { useDebounced } from '@/hooks/useDebounced'
 import { useQuickLine } from '@/hooks/useQuickLine'
 import { initialAmount, resolveAmount, type AmountState } from '@/lib/amount'
-import { formatDayHeading } from '@/lib/dates'
+import { formatDayHeading, todayKey } from '@/lib/dates'
 import { dishToExternal, loadIndianDishes, searchIndianDishes } from '@/lib/indian'
 import { MEALS } from '@/lib/meals'
 import { describeAmount, fmtG, fmtKcal, scale } from '@/lib/nutrition'
@@ -52,7 +52,7 @@ function FoodRow({ name, brand, detail, onPick, onRepeat }: { name: string; bran
  */
 export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; meal: string; onClose: () => void }) {
   const { timezone } = useSettings()
-  const { toast } = useToast()
+  const { toast, confirm } = useToast()
   const qc = useQueryClient()
   const [meal, setMeal] = useState(initialMeal)
   const [step, setStep] = useState<Step>({ kind: 'pick' })
@@ -103,10 +103,32 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['diary'] }); void qc.invalidateQueries({ queryKey: ['foods'] }) }
   const back = () => { setStep({ kind: 'pick' }); setTimeout(() => searchRef.current?.focus(), 0) }
 
+  /**
+   * The moment after logging: what went in, and where the day now stands (its ring fills from before to after).
+   * Full-screen or a notification, per the device's setting. `kcal` null: worked out from the day's totals.
+   */
+  const celebrate = async (title: string, kcal: number | null, toDay: string, toMeal: string, undo: () => void, before?: number) => {
+    const s = await daySummary(toDay).catch(() => null)
+    const eaten = s?.totals.kcal ?? null, goal = s?.goal?.kcal ?? null
+    const added = kcal ?? (eaten != null && before != null ? eaten - before : null)
+    const label = formatDayHeading(toDay, timezone)
+    confirm({
+      kicker: `Logged to ${mealLabel(toMeal)}${toDay !== todayKey(timezone) ? ` · ${label}` : ''}`,
+      title, detail: added != null ? `${fmtKcal(added)} kcal` : undefined,
+      ring: eaten != null && goal && added != null ? { from: (eaten - added) / goal, to: eaten / goal } : undefined,
+      stats: eaten == null ? undefined : [
+        { label: label === 'Today' ? 'Today' : 'That day', value: goal ? `${fmtKcal(eaten)} / ${fmtKcal(goal)} kcal` : `${fmtKcal(eaten)} kcal` },
+        ...(goal ? [{ label: eaten > goal ? 'Over' : 'Left', value: `${fmtKcal(Math.abs(goal - eaten))} kcal` }] : []),
+        ...(s?.goal ? [{ label: 'Protein', value: `${Math.round(s.totals.protein_g)} / ${s.goal.protein_g} g` }] : []),
+      ],
+      action: { label: 'Undo', onClick: undo },
+    })
+  }
+
   const saved = (name: string, kcal: number, id: string) => {
     refresh()
     setAdded((a) => ({ n: a.n + 1, kcal: a.kcal + kcal }))
-    toast(`Logged ${name} · ${fmtKcal(kcal)} kcal`, { action: { label: 'Undo', onClick: () => void deleteEntry(id).then(() => { refresh(); setAdded((a) => ({ n: a.n - 1, kcal: a.kcal - kcal })) }) } })
+    void celebrate(name, kcal, day, meal, () => void deleteEntry(id).then(() => { refresh(); setAdded((a) => ({ n: a.n - 1, kcal: a.kcal - kcal })) }))
     setQuery('')
     back()
   }
@@ -120,10 +142,9 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
       const kcal = entries.reduce((sum, e) => sum + e.kcal, 0)
       refresh()
       setAdded((a) => ({ n: a.n + entries.length, kcal: a.kcal + kcal }))
-      const where = `${mealLabel(toMeal)}${toDay !== day ? `, ${formatDayHeading(toDay, timezone)}` : ''}`
-      toast(`Logged ${entries.length} item${entries.length === 1 ? '' : 's'} · ${fmtKcal(kcal)} kcal to ${where}`, {
-        action: { label: 'Undo', onClick: () => void Promise.all(entries.map((e) => deleteEntry(e.id))).then(() => { refresh(); setAdded((a) => ({ n: a.n - entries.length, kcal: a.kcal - kcal })) }) },
-      })
+      const title = entries.length === 1 ? entries[0].name : `${entries.length} items: ${entries.map((e) => e.name).join(', ')}`
+      void celebrate(title.length > 70 ? `${title.slice(0, 68)}…` : title, kcal, toDay, toMeal,
+        () => void Promise.all(entries.map((e) => deleteEntry(e.id))).then(() => { refresh(); setAdded((a) => ({ n: a.n - entries.length, kcal: a.kcal - kcal })) }))
       setQuery('')
       setDropped([])
     } catch (err) { toast(ruleMessage(err, 'Couldn’t log that.'), { kind: 'error' }) } finally { setLineBusy(false); searchRef.current?.focus() }
@@ -138,10 +159,16 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
 
   const logSavedMeal = async (id: string, name: string) => {
     try {
+      const before = (await daySummary(day).catch(() => null))?.totals.kcal
       const n = await logTemplate(id, day, meal)
       refresh()
-      toast(n ? `Logged ${name} (${n} item${n === 1 ? '' : 's'}) to ${mealLabel(meal)}` : `${name} has no foods left to log.`)
-      if (n) setAdded((a) => ({ n: a.n + n, kcal: a.kcal }))
+      if (!n) return toast(`${name} has no foods left to log.`)
+      setAdded((a) => ({ n: a.n + n, kcal: a.kcal }))
+      // a saved meal's entries are the newest n of this meal: Undo takes them back
+      void celebrate(`${name} (${n} item${n === 1 ? '' : 's'})`, null, day, meal, () => void fetchDayEntries(day).then((all) => {
+        const mine = all.filter((e) => e.meal === meal).sort((a, b) => b.logged_at.localeCompare(a.logged_at)).slice(0, n)
+        return Promise.all(mine.map((e) => deleteEntry(e.id)))
+      }).then(() => { refresh(); setAdded((a) => ({ n: a.n - n, kcal: a.kcal })) }), before)
     } catch { toast('Couldn’t log that meal.', { kind: 'error' }) }
   }
 

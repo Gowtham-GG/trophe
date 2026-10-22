@@ -32,7 +32,7 @@ is multi-user by construction even though it is built for personal use.
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
-| 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards **done**; full-screen confirmations | in progress |
+| 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | **done** |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
@@ -194,6 +194,19 @@ know is skipped, not shown broken). Today shows the first two, each dismissible 
 | fibre low, water low | average below 70 % of the goal (4+ logged days; 3+ days of water) |
 | nothing logged yesterday | you logged 7+ of the 13 days before |
 | on-target streak / steady week | 3+ days on target in a row; or the week's average within 5 % of the goal |
+
+### Confirmations
+
+Logging a food (or a typed line, a saved meal, a quick add), a weigh-in or a new goal gets a full-screen moment, as in
+Argus: a wash of the accent, today's calorie ring filling from before to after, the day's numbers and an Undo. Any tap
+or key dismisses it (Escape only closes the confirmation, not the log dialog under it). Settings → Confirmations
+switches a device to notifications only (kept in `localStorage`: a phone and a laptop may differ); a device that asks
+for reduced motion always gets notifications.
+
+The log dialog is a modal `<dialog>`, which makes everything outside it inert — even popovers drawn above it. So the
+confirmation and the toasts are top-layer popovers mounted *inside* the open dialog when there is one
+(`ToastContext`): drawn over the whole screen, and clickable (this also fixed toasts' Undo being unreachable behind the
+log dialog).
 
 ### Recipes
 

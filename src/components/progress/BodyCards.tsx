@@ -26,7 +26,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 
 /** Weight: today's weigh-in, the trend, its weekly pace, change over the range, and the chart. */
 export function WeightCard({ from, to }: { from: string; to: string }) {
-  const { toast } = useToast()
+  const { toast, confirm } = useToast()
   const qc = useQueryClient()
   const points = useQuery({ queryKey: ['weight', 'trend', from, to], queryFn: () => weightTrend(from, to) })
   const summary = useQuery({ queryKey: ['weight', 'summary'], queryFn: weightSummary })
@@ -42,7 +42,9 @@ export function WeightCard({ from, to }: { from: string; to: string }) {
       await saveWeighIn(to, Math.round(v * 100) / 100)
       setText('')
       for (const key of ['weight', 'weigh-ins', 'maintenance']) void qc.invalidateQueries({ queryKey: [key] })
-      toast(`Saved ${kg(v)} for today`)
+      const s = await weightSummary().catch(() => null)
+      confirm({ kicker: 'Weigh-in saved', title: kg(v), detail: s?.latest ? `trend ${kg(s.latest.trend)}` : undefined,
+        stats: s?.week_rate != null ? [{ label: 'Per week', value: Math.abs(s.week_rate) < 0.05 ? 'Steady' : signed(s.week_rate, 'kg') }] : undefined })
     } catch (err) { toast(ruleMessage(err, 'Couldn’t save the weight.'), { kind: 'error' }) } finally { setBusy(false) }
   }
 

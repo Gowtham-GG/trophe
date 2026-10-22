@@ -9,10 +9,35 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useAuth } from '@/hooks/useAuth'
 import { browserTimezone, isValidTimezone, todayKey } from '@/lib/dates'
+import { getEffectsMode, prefersReducedMotion, setEffectsMode, type EffectsMode } from '@/lib/effects'
 import { ACTIVITY } from '@/lib/nutrition'
 
 const zones = (): string[] => {
   try { return (Intl as unknown as { supportedValuesOf: (k: string) => string[] }).supportedValuesOf('timeZone') } catch { return ['UTC'] }
+}
+
+/** How a log (or a weigh-in, or a new goal) is confirmed on this device: full-screen, or a notification. */
+function ConfirmationsCard() {
+  const { confirm } = useToast()
+  const [mode, setMode] = useState<EffectsMode>(getEffectsMode)
+  const choose = (m: EffectsMode) => { setEffectsMode(m); setMode(m) }
+  return (
+    <Card title="Confirmations">
+      <p className="mb-3 text-sm text-muted">How Trophe confirms a log, a weigh-in or a new goal. Saved on this device.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="radiogroup" aria-label="Confirmation style" className="flex gap-1 rounded-full bg-panel p-1">
+          {([['full', 'Full-screen'], ['subtle', 'Notifications only']] as const).map(([m, label]) => (
+            <button key={m} role="radio" aria-checked={mode === m} onClick={() => choose(m)}
+              className={`rounded-full px-3 py-1 text-sm ${mode === m ? 'bg-accent text-on-accent font-semibold' : 'text-muted hover:text-ink'}`}>{label}</button>
+          ))}
+        </div>
+        <button onClick={() => confirm({ kicker: 'Logged to Lunch', title: 'Masala dosa', detail: '330 kcal', ring: { from: 0.45, to: 0.62 },
+          stats: [{ label: 'Today', value: '1,240 / 2,000 kcal' }, { label: 'Left', value: '760 kcal' }], action: { label: 'Undo', onClick: () => {} } })}
+          className="rounded-full border border-line px-3 py-1 text-sm hover:bg-hover">Preview</button>
+      </div>
+      {prefersReducedMotion() && <p className="mt-2 text-xs text-muted">Your device asks for reduced motion, so notifications are used either way.</p>}
+    </Card>
+  )
 }
 
 export function Settings() {
@@ -58,6 +83,8 @@ export function Settings() {
             ))}
           </div>
         </Card>
+
+        <ConfirmationsCard />
 
         <Card title="Appearance">
           <p className="mb-4 text-sm text-muted">Pick a colour theme. It follows you across devices.</p>

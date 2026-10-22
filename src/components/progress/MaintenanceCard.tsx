@@ -34,7 +34,7 @@ function Needs({ m }: { m: MaintenanceEstimate }) {
  */
 export function MaintenanceCard({ today }: { today: string }) {
   const { profile } = useSettings()
-  const { toast } = useToast()
+  const { toast, confirm } = useToast()
   const qc = useQueryClient()
   const est = useQuery({ queryKey: ['maintenance', today], queryFn: () => maintenanceEstimate(today) })
   const goal = useQuery({ queryKey: ['goals', today], queryFn: () => goalFor(today) })
@@ -58,7 +58,8 @@ export function MaintenanceCard({ today }: { today: string }) {
       const macros = current ? rescaleGoal(current, suggested) : { kcal: suggested, ...macroTargets(suggested, kg, 1.6, 25) }
       await saveGoal({ effective_from: today, ...macros, pace_kg_week: pace })
       for (const key of ['diary', 'goals', 'maintenance']) void qc.invalidateQueries({ queryKey: [key] })
-      toast(`New goal from today: ${fmtKcal(suggested)} kcal a day`)
+      confirm({ kicker: 'New goal from today', title: `${fmtKcal(suggested)} kcal a day`, detail: `${paceLabel(pace)}${pace ? ' kg a week' : ''}`,
+        stats: [{ label: 'Protein', value: `${macros.protein_g} g` }, { label: 'Carbs', value: `${macros.carbs_g} g` }, { label: 'Fat', value: `${macros.fat_g} g` }] })
       setPicked(null)
     } catch (err) { toast(ruleMessage(err, 'Couldn’t save the goal.'), { kind: 'error' }) } finally { setBusy(false) }
   }

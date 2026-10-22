@@ -26,7 +26,7 @@ const n = (s: string) => Number(s.replace(',', '.'))
  */
 export function GoalWizard({ onClose }: { onClose: () => void }) {
   const { timezone, profile, update } = useSettings()
-  const { toast } = useToast()
+  const { confirm } = useToast()
   const qc = useQueryClient()
   const today = todayKey(timezone)
   const weight = useQuery({ queryKey: ['weigh-ins', 'latest'], queryFn: latestWeighIn })
@@ -64,7 +64,8 @@ export function GoalWizard({ onClose }: { onClose: () => void }) {
       await saveWeighIn(today, n(kgText))
       await saveGoal({ effective_from: today, ...final, fiber_g: Math.round((final.kcal / 1000) * 14), pace_kg_week: pace })
       for (const key of ['diary', 'goals', 'weigh-ins', 'weight', 'maintenance']) void qc.invalidateQueries({ queryKey: [key] })
-      toast(`Goal set: ${final.kcal.toLocaleString('en-IN')} kcal a day`)
+      confirm({ kicker: 'Goal set', title: `${final.kcal.toLocaleString('en-IN')} kcal a day`,
+        stats: [{ label: 'Protein', value: `${final.protein_g} g` }, { label: 'Carbs', value: `${final.carbs_g} g` }, { label: 'Fat', value: `${final.fat_g} g` }] })
       onClose()
     } catch (err) { setError(ruleMessage(err, 'Couldn’t save the goal.')) } finally { setBusy(false) }
   }
