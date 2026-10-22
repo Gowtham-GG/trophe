@@ -26,6 +26,11 @@ export async function lookupBarcode(code: string): Promise<ExternalFood | null> 
   return (await callApi<{ food: ExternalFood | null }>(`/api/food-search?barcode=${encodeURIComponent(code)}`)).food
 }
 
+/** A recipe read from a web page (its JSON-LD): name, ingredient lines, portions. */
+export async function importRecipe(url: string): Promise<{ name: string; ingredients: string[]; portions: number | null }> {
+  return (await callApi<{ recipe: { name: string; ingredients: string[]; portions: number | null } }>(`/api/recipe-import?url=${encodeURIComponent(url)}`)).recipe
+}
+
 /** Copy an online food into your foods (only when you pick it). Picking it again returns the same food. */
 export async function saveExternalFood(f: ExternalFood): Promise<string> {
   const { servings, ...food } = f

@@ -2,14 +2,20 @@ import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ruleMessage } from '@/api/errors'
 import { fetchServings, searchFoods } from '@/api/foods'
-import { saveExternalFood } from '@/api/online'
+import { importRecipe, saveExternalFood, searchOnline, SOURCE_LABEL, usdaFood } from '@/api/online'
 import { fetchRecipeItems, saveRecipe } from '@/api/recipes'
+import { useSettings } from '@/contexts/SettingsContext'
 import { useDebounced } from '@/hooks/useDebounced'
+import { useQuickCandidates } from '@/hooks/useQuickLine'
 import { initialAmount, resolveAmount, type AmountState } from '@/lib/amount'
+import { todayKey } from '@/lib/dates'
+import type { ExternalFood } from '@/lib/external'
 import { dishToExternal, loadIndianDishes, searchIndianDishes, type IndianDish } from '@/lib/indian'
 import { fmtG, fmtKcal } from '@/lib/nutrition'
+import { parseQuickLog } from '@/lib/quickLog'
 import { recipeNumbers } from '@/lib/recipe'
-import type { Food, FoodServing, RecipeItem } from '@/types/db'
+import { ingredientLine } from '@/lib/recipeImport'
+import type { Food, FoodServing, QuickLogFood, RecipeItem } from '@/types/db'
 import { AmountPicker } from './AmountPicker'
 import { IconPlus, IconSearch, IconX } from './icons'
 import { NutritionLine } from './NutritionLine'
@@ -51,16 +57,67 @@ export function RecipeForm({ recipe, onSaved, onCancel }: { recipe?: Food; onSav
   const saved = new Set(own.filter((f) => f.source === 'ifct').map((f) => f.external_id))
   const dishHits = q && dishes.data ? searchIndianDishes(q, dishes.data, 4).filter((d) => !saved.has(d.id)) : []
 
-  const add = async (pick: { food: Food } | { dish: IndianDish }) => {
+  // online (USDA ingredients, Open Food Facts packets): only when asked, to spare the free APIs
+  const [onlineQ, setOnlineQ] = useState('')
+  const online = useQuery({ queryKey: ['online', onlineQ.toLowerCase()], queryFn: () => searchOnline(onlineQ), enabled: onlineQ.length >= 3, staleTime: 60 * 60_000, retry: false })
+
+  // import from a web page: matched lines become ingredients, the rest a list to find
+  const { timezone } = useSettings()
+  const candidates = useQuickCandidates(!recipe)
+  const [url, setUrl] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [toAdd, setToAdd] = useState<{ line: string; query: string }[]>([])
+  const [finding, setFinding] = useState<string | null>(null)
+
+  const add = async (pick: { food: Food } | { dish: IndianDish } | { online: ExternalFood }) => {
     setAdding(true); setError(null)
     try {
-      const food: Ingredient = 'food' in pick
-        ? { ...pick.food, food_servings: [] }
-        : { ...dishToExternal(pick.dish), id: await saveExternalFood(dishToExternal(pick.dish)), food_servings: [] }
+      let food: Ingredient
+      if ('food' in pick) food = { ...pick.food, food_servings: [] }
+      else if ('dish' in pick) food = { ...dishToExternal(pick.dish), id: await saveExternalFood(dishToExternal(pick.dish)), food_servings: [] }
+      else {
+        // USDA search results carry no portions; the detail does
+        const full = pick.online.source === 'usda' && !pick.online.servings.length ? (await usdaFood(pick.online.external_id).catch(() => null)) ?? pick.online : pick.online
+        food = { ...full, id: await saveExternalFood(full), food_servings: [] }
+      }
       const servings = await fetchServings(food.id)
       setRows((r) => [...(r ?? []), { key: crypto.randomUUID(), food, servings, amount: initialAmount(servings) }])
-      setQuery('')
+      setQuery(''); setOnlineQ('')
+      if (finding) { setToAdd((l) => l.filter((x) => x.line !== finding)); setFinding(null) }
     } catch (err) { setError(ruleMessage(err, 'Couldn’t add that ingredient.')) } finally { setAdding(false) }
+  }
+
+  const doImport = async () => {
+    setImporting(true); setError(null)
+    try {
+      const r = await importRecipe(url.trim())
+      if (!name.trim()) setName(r.name)
+      if (r.portions && !portions.trim()) setPortions(String(r.portions))
+      // ingredients are raw: match your own foods, not the cooked dishes or other recipes
+      const raw = (candidates ?? []).filter((c) => c.ref.kind === 'mine' && c.source !== 'ifct' && c.source !== 'recipe')
+      const added: Row[] = [], missing: { line: string; query: string }[] = []
+      for (const original of r.ingredients) {
+        const line = ingredientLine(original)
+        const parsed = line ? parseQuickLog(line, raw, todayKey(timezone)).items : []
+        const hit = parsed.find((i) => i.food && i.grams)
+        if (hit?.food) {
+          // your own foods come straight from quick_log_foods(), servings with their ids
+          const c = hit.food as unknown as QuickLogFood
+          const servings = c.servings.map((x) => ({ id: x.id, label: x.label, grams: x.grams }))
+          const sv = servings.find((x) => x.label === hit.serving_label)
+          added.push({
+            key: crypto.randomUUID(), servings,
+            food: { id: c.id, name: c.name, brand: c.brand ?? null, kcal: c.kcal, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, fiber_g: c.fiber_g ?? null, food_servings: [] },
+            amount: sv ? { unit: sv.id, qty: hit.serving_qty ?? 1 } : { unit: 'g', qty: hit.grams! },
+          })
+        } else if (line) {
+          missing.push({ line, query: parsed.find((i) => !i.food)?.query || line.replace(/[\d½¼¾⅓⅔⅛./]+/g, ' ').trim() })
+        }
+      }
+      setRows((rs) => [...(rs ?? []), ...added])
+      setToAdd(missing)
+      setUrl('')
+    } catch (err) { setError((err as Error).message) } finally { setImporting(false) }
   }
 
   const resolved = (rows ?? []).map((r) => ({ row: r, amount: resolveAmount(r.amount, r.servings) }))
@@ -91,6 +148,13 @@ export function RecipeForm({ recipe, onSaved, onCancel }: { recipe?: Food; onSav
 
   return (
     <form onSubmit={(e) => void submit(e)} className="space-y-4">
+      {!recipe && (
+        <div className="flex gap-2">
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Import from a recipe page — paste its link" aria-label="Recipe page link"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (url.trim()) void doImport() } }} className="field min-w-0 flex-1" />
+          <button type="button" onClick={() => void doImport()} disabled={!url.trim() || importing || !candidates} className="rounded-lg border border-line px-4 py-2 text-sm hover:bg-hover">{importing ? 'Reading…' : 'Import'}</button>
+        </div>
+      )}
       <label className="block"><span className="mb-1 block text-xs text-muted">Name</span>
         <input autoFocus={!recipe} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sunday chicken curry" className="field" maxLength={120} /></label>
 
@@ -108,6 +172,21 @@ export function RecipeForm({ recipe, onSaved, onCancel }: { recipe?: Food; onSav
             </li>
           ))}
         </ul>
+
+        {toAdd.length > 0 && (
+          <div className="mt-2 rounded-xl border border-line px-3 py-2">
+            <p className="mb-1 text-xs text-muted">From the page, still to add (tap one to find it; water and salt can be skipped):</p>
+            <ul className="space-y-0.5">
+              {toAdd.map((t) => (
+                <li key={t.line} className="flex items-center gap-2 text-sm">
+                  <button type="button" onClick={() => { setFinding(t.line); setQuery(t.query); setOnlineQ('') }}
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-left hover:bg-hover ${finding === t.line ? 'bg-accent-soft' : ''}`}>{t.line}</button>
+                  <button type="button" onClick={() => setToAdd(toAdd.filter((x) => x.line !== t.line))} aria-label={`Skip ${t.line}`} className="rounded p-1 text-faint hover:text-ink"><IconX size={13} /></button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="relative mt-2">
           <IconSearch size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
@@ -127,7 +206,17 @@ export function RecipeForm({ recipe, onSaved, onCancel }: { recipe?: Food; onSav
                 <IconPlus size={14} className="shrink-0 text-accent" /><span className="truncate">{d.name} <span className="text-faint">· Indian dishes</span></span>
                 <span className="ml-auto shrink-0 text-xs text-faint">{fmtKcal(d.kcal)} kcal / 100 g</span></button></li>
             ))}
-            {found.isSuccess && !own.length && !dishHits.length && <li className="px-3 py-2 text-sm text-faint">None of your foods match “{q}”. Add it in Foods (or log it once from online search) first.</li>}
+            {found.isSuccess && !own.length && !dishHits.length && <li className="px-3 py-2 text-sm text-faint">None of your foods match “{q}”.</li>}
+            {q.length >= 3 && onlineQ !== q && (
+              <li><button type="button" onClick={() => setOnlineQ(q)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-accent hover:bg-hover">Search online for “{q}” (USDA, Open Food Facts)</button></li>
+            )}
+            {onlineQ === q && online.isFetching && <li className="skeleton m-1 h-9" />}
+            {onlineQ === q && online.isError && <li className="px-3 py-2 text-sm text-danger">{(online.error as Error).message}</li>}
+            {onlineQ === q && online.data?.foods.slice(0, 8).map((f) => (
+              <li key={`${f.source}:${f.external_id}`}><button type="button" disabled={adding} onClick={() => void add({ online: f })} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-hover">
+                <IconPlus size={14} className="shrink-0 text-accent" /><span className="truncate">{f.name}{f.brand && <span className="text-faint"> · {f.brand}</span>} <span className="text-faint">· {SOURCE_LABEL[f.source]}</span></span>
+                <span className="ml-auto shrink-0 text-xs text-faint">{fmtKcal(f.kcal)} kcal / 100 g</span></button></li>
+            ))}
           </ul>
         )}
       </div>

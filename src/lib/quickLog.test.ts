@@ -41,6 +41,9 @@ describe('parseQuickLog', () => {
     expect(brief('paneer 150 g')).toEqual(['paneer 150g'])
     expect(brief('200ml milk')).toEqual(['ifct:milk 200g'])
     expect(brief('1.5kg rice')).toEqual(['ifct:rice 1500g'])
+    expect(brief('8 oz paneer')).toEqual(['paneer 226.8g'])
+    expect(parseQuickLog('2 tomatoes', [{ name: 'Tomato', servings: [] }], TODAY).items[0].food?.name).toBe('Tomato')
+    expect(brief('⅓ cup oats')).toEqual(['oats 13.2g (0.33 × 1 cup)'])
   })
 
   it('understands fractions and number words', () => {

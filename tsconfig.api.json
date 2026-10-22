@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["api", "src/lib/external.ts"]
+  "include": ["api", "src/lib/external.ts", "src/lib/recipeImport.ts"]
 }

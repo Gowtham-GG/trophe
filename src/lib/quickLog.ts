@@ -42,6 +42,7 @@ const NUMBER_WORDS: Record<string, number> = {
 }
 const UNITS: Record<string, number> = {
   g: 1, gm: 1, gms: 1, gram: 1, grams: 1, gr: 1, kg: 1000, ml: 1, l: 1000, litre: 1000, liter: 1000, litres: 1000, liters: 1000,
+  oz: 28.35, ounce: 28.35, ounces: 28.35, lb: 453.6, lbs: 453.6, pound: 453.6, pounds: 453.6,
 }
 // household measures; grams for one when the food has no serving of that name (null: the food's own unit, e.g. a piece)
 const MEASURES: Record<string, number | null> = {
@@ -63,8 +64,11 @@ const SEPARATORS = new Set(['and', 'with', 'plus', 'also', 'then', ','])
 const FILLER = new Set(['of', 'for', 'at', 'in', 'on', 'had', 'have', 'ate', 'eaten', 'drank', 'some', 'the', 'my', 'today', 'this', 'about', 'around', 'approx', 'like', 'i'])
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
-/** "rotis" → "roti", "glasses" → "glass", "eggs" → "egg"; short words and "-ss" are left alone. */
-const singular = (w: string) => (w.endsWith('sses') ? w.slice(0, -2) : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)
+/** "rotis" → "roti", "glasses" → "glass", "tomatoes" → "tomato", "curries" → "curry"; short words and "-ss" are left alone. */
+const singular = (w: string) => (w.endsWith('sses') ? w.slice(0, -2)
+  : w.length > 4 && w.endsWith('oes') ? w.slice(0, -2)
+    : w.length > 4 && w.endsWith('ies') ? `${w.slice(0, -3)}y`
+      : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w && !FILLER.has(w)).map(singular)
 
 function parseNumber(t: string): number | null {
@@ -187,7 +191,7 @@ export function looksLikeQuickLog(input: string): boolean {
 
 export function parseQuickLog<F extends QFood>(input: string, foods: F[], today: string): QuickLog<F> {
   const text = input.toLowerCase()
-    .replace(/½/g, ' 0.5 ').replace(/¼/g, ' 0.25 ').replace(/¾/g, ' 0.75 ')
+    .replace(/½/g, ' 0.5 ').replace(/¼/g, ' 0.25 ').replace(/¾/g, ' 0.75 ').replace(/⅓/g, ' 0.33 ').replace(/⅔/g, ' 0.67 ').replace(/⅛/g, ' 0.125 ')
     .replace(/\bhalf an?\b/g, ' 0.5 ')                                     // "half a katori"
     .replace(/\b(\d+|one|two|three|a|an)\s+and\s+a\s+half\b/g, (_, n: string) => ` ${(parseNumber(n) ?? 1) + 0.5} `)
     .replace(/(\d)\s*x\b/g, '$1 ').replace(/\bx\s*(\d)/g, ' $1')           // "2x roti", "roti x2"

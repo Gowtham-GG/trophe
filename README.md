@@ -33,7 +33,7 @@ is multi-user by construction even though it is built for personal use.
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | **done** |
-| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists **done**; recipe import, export, links to Mneme habits / Argus | in progress |
+| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists, recipe import **done**; export, links to Mneme habits / Argus | in progress |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
 ---
@@ -43,7 +43,7 @@ is multi-user by construction even though it is built for personal use.
 ```
  Web (React + TS + Vite + Tailwind, PWA) ── supabase-js ──▶ Supabase Auth (shared with Argus + Mneme)
                                                        └──▶ PostgREST ─▶ Postgres  schema `trophe`  (RLS on every table)
- Vercel = static hosting (+ one small function for USDA search in Phase 2)
+ Vercel = static hosting (+ small functions: food search (Phase 2) and recipe import (Phase 5))
 ```
 
 ```
@@ -220,6 +220,20 @@ history stays fixed like the macros. Open Food Facts (grams per 100 g, converted
 them in when they have them; recipes add them up; the food form takes them from a label. The day view (collapsed) and
 Progress (average per logged day) compare them with FDA daily values, sugar and sodium with their limits, and say how
 many logged items carried data — foods without it aren't counted, so totals are a floor.
+
+### Recipe import
+
+New recipe → paste a recipe page's link → Import. `api/recipe-import.ts` (a Vercel function, signed-in users only)
+fetches the page and reads the schema.org `Recipe` most recipe sites publish as JSON-LD (`src/lib/recipeImport.ts`):
+name, ingredient lines, yield (→ portions). Each line is cleaned (`ingredientLine`: brackets, ranges, prep words) and
+run through the quick-add parser against **your own raw foods** (not the cooked Indian dishes); matches become
+ingredients with their amounts, the rest a "still to add" list — tap one to search your foods, or online (USDA for raw
+ingredients) on demand.
+
+Fetching a URL server-side is guarded against SSRF: http(s) on standard ports only, no credentials in the link,
+every DNS answer checked at connect time (a custom `lookup`, so a name can't be rebound to an internal address after a
+check), numeric addresses checked directly, redirects followed by hand and re-checked, 8 s timeout, 3 MB cap. Private,
+loopback, link-local (cloud metadata), CGNAT, multicast and IPv4-mapped addresses are refused (`isPublicAddress`, unit-tested).
 
 ### Meal plans and grocery lists
 
