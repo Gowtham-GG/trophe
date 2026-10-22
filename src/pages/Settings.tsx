@@ -17,7 +17,7 @@ const zones = (): string[] => {
 
 export function Settings() {
   const { user } = useAuth()
-  const { timezone, profile, update } = useSettings()
+  const { timezone, profile, waterGoal, update } = useSettings()
   const { toast } = useToast()
   const goal = useQuery({ queryKey: ['goals', todayKey(timezone)], queryFn: () => goalFor(todayKey(timezone)) })
   // /settings#goals (from "Set your calorie goal" on Today) opens the wizard straight away
@@ -48,6 +48,16 @@ export function Settings() {
           </Card>
         </div>
         {wizard && <GoalWizard onClose={() => setWizard(false)} />}
+
+        <Card title="Water">
+          <p className="mb-2 text-sm text-muted">Your daily goal. Around 2–3 litres suits most adults; more in heat or with exercise.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {[1500, 2000, 2500, 3000, 3500, 4000].map((ml) => (
+              <button key={ml} onClick={() => void update({ water_goal_ml: ml }).catch(() => toast('Couldn’t save the water goal.', { kind: 'error' }))} aria-pressed={waterGoal === ml}
+                className={`rounded-full px-3 py-1 text-sm tabular-nums ${waterGoal === ml ? 'bg-accent text-on-accent font-semibold' : 'bg-panel text-muted hover:bg-hover hover:text-ink'}`}>{ml / 1000} l</button>
+            ))}
+          </div>
+        </Card>
 
         <Card title="Appearance">
           <p className="mb-4 text-sm text-muted">Pick a colour theme. It follows you across devices.</p>

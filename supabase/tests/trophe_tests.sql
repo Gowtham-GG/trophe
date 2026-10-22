@@ -339,6 +339,42 @@ begin
   perform t.logout();
 end $$;
 
+-- ============================================================== 13. body ==
+insert into auth.users (id, email) values ('cccccccc-0000-0000-0000-000000000003', 'c@test');
+do $$
+declare c uuid := 'cccccccc-0000-0000-0000-000000000003'; j jsonb;
+begin
+  perform t.login(c);
+  perform t.ok(trophe.weight_summary()->'latest' = 'null'::jsonb and trophe.weight_summary()->'week_rate' = 'null'::jsonb, 'no weigh-ins: an empty summary');
+  insert into trophe.weigh_ins (day, kg) values ('2026-09-01', 80), ('2026-09-02', 81), ('2026-09-04', 79);
+  -- 80 → 80 + 10 % of 1 = 80.1 → two days later 19 % of the way to 79 = 79.89
+  perform t.ok((select string_agg(day || '=' || kg || '/' || trend, ',' order by day) from trophe.weight_trend('2026-09-02', '2026-09-30'))
+               = '2026-09-02=81.00/80.10,2026-09-04=79.00/79.89', 'the trend moves 10 % a day toward each weigh-in, and starts settled');
+  perform t.ok(trophe.weight_summary()->'week_rate' = 'null'::jsonb, 'no weekly rate until weigh-ins are 7 days apart');
+  insert into trophe.weigh_ins (day, kg) values ('2026-09-20', 78);
+  j := trophe.weight_summary();
+  perform t.ok(j->'latest' = '{"day": "2026-09-20", "kg": 78.00, "trend": 78.35}'::jsonb and (j->>'count')::int = 4 and j->'first'->>'day' = '2026-09-01',
+               'summary: latest weigh-in, its trend, the first one, how many');
+  perform t.ok((j->>'week_rate')::numeric = -0.67, 'weekly rate: the trend''s change against ~2 weeks earlier');
+
+  insert into trophe.measurements (day, waist_cm) values ('2026-09-20', 90);
+  insert into trophe.measurements (day, body_fat_pct) values ('2026-09-20', 22) on conflict (user_id, day) do update set body_fat_pct = excluded.body_fat_pct;
+  perform t.ok((select concat_ws('|', waist_cm, body_fat_pct) from trophe.measurements) = '90.0|22.0', 'measurements: one row per day, filled in a value at a time');
+  perform t.ok(t.throws($q$ insert into trophe.measurements (day, waist_cm) values ('2026-09-21', 5) $q$), 'impossible measurements are refused');
+
+  insert into trophe.water_entries (day, ml) values ('2026-09-20', 250), ('2026-09-20', 500), ('2026-09-22', 250);
+  perform t.ok((select string_agg(ml::text, ',' order by day) from trophe.water_range('2026-09-20', '2026-09-22')) = '750,0,250', 'water per day, including days without any');
+  perform t.ok(t.throws($q$ insert into trophe.water_entries (day, ml) values ('2026-09-20', 0) $q$), 'a glass has some water in it');
+  insert into trophe.settings (timezone) values ('UTC');
+  perform t.ok((select water_goal_ml from trophe.settings) = 2500, 'the water goal defaults to 2.5 l');
+  perform t.logout();
+
+  perform t.login('aaaaaaaa-0000-0000-0000-000000000001');
+  perform t.ok(not exists (select 1 from trophe.weight_trend('2026-09-01', '2026-09-30')) and not exists (select 1 from trophe.measurements)
+               and (select sum(ml) from trophe.water_range('2026-09-20', '2026-09-22')) = 0, 'another user sees none of it');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

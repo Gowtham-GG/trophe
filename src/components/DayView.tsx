@@ -15,6 +15,7 @@ import { Dialog } from './Dialog'
 import { EntryDialog } from './EntryDialog'
 import { IconMore, IconPlus } from './icons'
 import { MacroBar, Ring } from './Ring'
+import { WaterCard } from './WaterCard'
 
 // The macro colours keep one meaning everywhere: protein = teal, carbs = accent, fat = amber.
 const MACRO_TONES = { protein_g: 'var(--task)', carbs_g: 'var(--accent)', fat_g: 'var(--important)' } as const
@@ -175,6 +176,7 @@ export function DayView({ day, side }: { day: string; side?: React.ReactNode }) 
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="min-w-0 space-y-4 lg:self-start">
         <CaloriesCard s={s} />
+        <WaterCard day={day} />
         {side}
       </div>
       <div className="min-w-0 space-y-4 lg:col-span-2">

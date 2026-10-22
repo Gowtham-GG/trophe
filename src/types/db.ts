@@ -13,6 +13,7 @@ export interface Settings {
   birth_year: number | null
   height_cm: number | null
   activity: Activity | null
+  water_goal_ml: number
 }
 
 /** Nutrients per 100 g. */
@@ -57,6 +58,23 @@ export interface FoodServing {
   grams: number
   position: number
 }
+
+/** One weigh-in with the smoothed trend on that day (weight_trend). */
+export interface WeightPoint { day: string; kg: number; trend: number }
+
+/** weight_summary(): the latest weigh-in and trend, the first one, and the trend's pace (kg / week, null until 7 days apart). */
+export interface WeightSummary {
+  latest: WeightPoint | null
+  first: { day: string; kg: number } | null
+  count: number
+  week_rate: number | null
+}
+
+export const MEASURES = ['waist_cm', 'hips_cm', 'chest_cm', 'neck_cm', 'arm_cm', 'thigh_cm', 'body_fat_pct'] as const
+export type MeasureKey = (typeof MEASURES)[number]
+export type Measurement = { day: string } & Record<MeasureKey, number | null>
+
+export interface WaterEntry { id: string; day: string; ml: number; logged_at: string }
 
 /** A logged item: nutrients are this entry's own totals (copied when logged). */
 export interface DiaryEntry {

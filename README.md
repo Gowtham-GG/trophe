@@ -31,7 +31,7 @@ is multi-user by construction even though it is built for personal use.
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
-| 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
+| 3. Body & progress | Weight with smoothed trend, water, measurements **done**; weekly/monthly charts, streaks | in progress |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
@@ -80,7 +80,9 @@ references auth.users on delete cascade` and one RLS policy `user_id = (select a
 | `food_servings` | "1 roti = 40 g", "1 katori = 150 g" per food |
 | `diary_entries` | day (local), meal, food, grams, how it was entered (`2 × 1 roti`), and **its own copy of the nutrients** |
 | `goals` | kcal + macros + fibre from `effective_from`; a day is judged by the goal in force then |
-| `weigh_ins` | one weight per day (the goal wizard records it; trend in Phase 3) |
+| `weigh_ins` | one weight per day (logged on Progress; the goal wizard records it too) |
+| `measurements` | one row per day: waist, hips, chest, neck, arm, thigh (cm), body fat % — any of them |
+| `water_entries` | each glass of water (day, ml), so the last one can be taken back; the goal is `settings.water_goal_ml` |
 | `meal_templates`, `meal_template_items` | saved meals ("usual breakfast") |
 | `recipe_items` | a recipe's ingredients (a recipe is a food with source `recipe`, plus its cooked weight and portions) |
 
@@ -93,7 +95,7 @@ without a food is a quick add (typed calories).
 `frequent_foods(meal)` (with last amount, for one-tap re-logging), `search_foods(query)`, `copy_entries(from, to, meal,
 to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`,
 `save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount),
-`save_recipe(id, name, items, cooked_g, portions)`.
+`save_recipe(id, name, items, cooked_g, portions)`, `weight_trend(from, to)`, `weight_summary()`, `water_range(from, to)`.
 
 ### Online food search
 
@@ -147,6 +149,18 @@ looked up in your foods first (any written form: UPC-A, EAN-13, GTIN-14), then o
 so the next scan finds it. Chrome on Android uses the built-in `BarcodeDetector`; other browsers load a WebAssembly
 ZXing reader (`barcode-detector`, pinned) from our own origin, never precached, only when a scan starts.
 
+### Body: weight trend, measurements, water
+
+Daily weight swings by a kilo or more with water and salt, so Progress reads it through a **trend**: an exponentially
+weighted moving average (as in *The Hacker's Diet*) where each weigh-in moves the trend 10 % of the way per day since
+the previous one. `weight_trend()` works it out in Postgres from the first weigh-in ever, so it is already settled at
+the start of any range; `weight_summary()` adds the trend's pace in kg per week (against the weigh-in nearest two
+weeks earlier, once there are 7 days to compare). Measurements are one row per day with any of the values filled in.
+Water is logged from Today (+250 / +500 ml, take back the last glass) against a goal set in Settings.
+
+The charts are small inline SVG components (`src/components/charts/`), no chart library: hairline grid, 2px trend line,
+a crosshair tooltip that snaps to the nearest reading (pointer, touch or arrow keys) and a table view of every value.
+
 ### Recipes
 
 Foods → **New recipe**: add ingredients (your foods or Indian dishes) with amounts, optionally the cooked weight
@@ -186,6 +200,7 @@ keeps its numbers until it's saved again.
 20261022130000_trophe_08_external_foods.sql  save_external_food(): keep an online food when you pick it
 20261022140000_trophe_09_quick_log.sql       quick_log_foods(): your foods, servings and last amounts for quick add
 20261022150000_trophe_10_recipes.sql         recipes: recipe_items, save_recipe(), numbers kept in step with ingredients
+20261022160000_trophe_11_body.sql            measurements, water, water goal; weight_trend() / weight_summary()
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.

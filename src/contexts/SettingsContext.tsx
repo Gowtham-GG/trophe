@@ -14,13 +14,15 @@ interface SettingsValue {
   activeTheme: ThemeId
   /** body profile for the goal wizard (all optional) */
   profile: { sex: Sex | null; birth_year: number | null; height_cm: number | null; activity: Activity | null }
+  /** daily water goal in ml */
+  waterGoal: number
   ready: boolean
   update: (patch: SettingsPatch) => Promise<void>
 }
 
 const SettingsContext = createContext<SettingsValue>({
   timezone: 'UTC', theme: DEFAULT_THEME, activeTheme: DEFAULT_THEME,
-  profile: { sex: null, birth_year: null, height_cm: null, activity: null }, ready: false, update: async () => {},
+  profile: { sex: null, birth_year: null, height_cm: null, activity: null }, waterGoal: 2500, ready: false, update: async () => {},
 })
 const THEME_KEY = 'trophe-theme'
 
@@ -79,8 +81,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [user, q.isSuccess, q.data, update])
 
   const value = useMemo(
-    () => ({ timezone, theme, activeTheme: resolveTheme(theme, dark), profile, ready: !user || q.isSuccess, update }),
-    [timezone, theme, dark, profile, user, q.isSuccess, update],
+    () => ({ timezone, theme, activeTheme: resolveTheme(theme, dark), profile, waterGoal: q.data?.water_goal_ml ?? 2500, ready: !user || q.isSuccess, update }),
+    [timezone, theme, dark, profile, q.data?.water_goal_ml, user, q.isSuccess, update],
   )
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
 }

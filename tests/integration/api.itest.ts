@@ -22,6 +22,7 @@ import * as goals from '@/api/goals'
 import * as templates from '@/api/templates'
 import { logQuickLine } from '@/api/quickLine'
 import * as recipes from '@/api/recipes'
+import * as body from '@/api/body'
 import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
 import dishes from '@/data/indian-dishes.json'
@@ -208,5 +209,31 @@ describe('recipes', () => {
       .rejects.toMatchObject({ message: expect.stringContaining("can't be an ingredient") })
     as(B)
     expect(await recipes.fetchRecipeItems(id)).toEqual([])
+  })
+})
+
+describe('body: weight trend, measurements, water', () => {
+  it('reads the trend and summary, saves measurements a value at a time, adds and removes water', async () => {
+    as(B)
+    for (const [day, kg] of [['2026-09-01', 80], ['2026-09-02', 81], ['2026-09-04', 79], ['2026-09-20', 78]] as const) await goals.saveWeighIn(day, kg)
+    expect(await body.weightTrend('2026-09-02', '2026-09-30')).toEqual([
+      { day: '2026-09-02', kg: 81, trend: 80.1 }, { day: '2026-09-04', kg: 79, trend: 79.89 }, { day: '2026-09-20', kg: 78, trend: 78.35 },
+    ])
+    expect(await body.weightSummary()).toEqual({ latest: { day: '2026-09-20', kg: 78, trend: 78.35 }, first: { day: '2026-09-01', kg: 80 }, count: 4, week_rate: -0.67 })
+
+    await body.saveMeasurement('2026-09-20', { waist_cm: 90 })
+    await body.saveMeasurement('2026-09-20', { body_fat_pct: 22 })
+    expect(await body.fetchMeasurements()).toMatchObject([{ day: '2026-09-20', waist_cm: 90, body_fat_pct: 22, hips_cm: null }])
+
+    const w = await body.addWater('2026-09-20', 250)
+    await body.addWater('2026-09-20', 500)
+    expect((await body.fetchWater('2026-09-20')).map((e) => e.ml)).toEqual([250, 500])
+    await body.deleteWater(w.id)
+    expect(await body.waterRange('2026-09-20', '2026-09-21')).toEqual([{ day: '2026-09-20', ml: 500 }, { day: '2026-09-21', ml: 0 }])
+    expect((await settings.saveSettings({ timezone: 'Asia/Kolkata', water_goal_ml: 3000 })).water_goal_ml).toBe(3000)
+
+    as(A)
+    expect(await body.weightTrend('2026-09-01', '2026-09-30')).toEqual([])
+    expect(await body.fetchWater('2026-09-20')).toEqual([])
   })
 })
