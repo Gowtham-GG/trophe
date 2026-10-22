@@ -236,6 +236,32 @@ begin
   perform t.logout();
 end $$;
 
+-- ======================================================== 10. online foods ==
+do $$
+declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; id1 uuid; id2 uuid;
+  parle jsonb := '{"source":"off","external_id":"8901719100956","name":" Parle G ","brand":"Parle-G","barcode":"8901719100956","kcal":454,"protein_g":7,"carbs_g":77.3,"fat_g":13,"sugar_g":25,"sodium_mg":0}';
+begin
+  perform t.login(a);
+  id1 := trophe.save_external_food(parle, '[{"label":"1 biscuit","grams":5.5},{"label":"","grams":10},{"label":"bad","grams":0}]');
+  perform t.ok((select concat_ws('|', name, brand, source, external_id, barcode, kcal) from trophe.foods where id = id1) = 'Parle G|Parle-G|off|8901719100956|8901719100956|454.0', 'online food saved as the user''s food');
+  perform t.ok((select string_agg(label || '=' || grams, ',') from trophe.food_servings where food_id = id1) = '1 biscuit=5.5', 'valid servings kept, blank / zero ones dropped');
+
+  update trophe.foods set name = 'Parle-G (my name)', archived_at = now() where id = id1;
+  id2 := trophe.save_external_food(parle || '{"kcal": 1}', '[{"label":"pack","grams":100}]');
+  perform t.ok(id1 = id2, 'saving the same online food again returns the existing copy');
+  perform t.ok((select concat_ws('|', name, kcal, archived_at is null) from trophe.foods where id = id1) = 'Parle-G (my name)|454.0|t', 'the user''s edits are kept; an archived copy comes back');
+  perform t.ok((select count(*) from trophe.food_servings where food_id = id1) = 1, 'servings are not duplicated on re-save');
+
+  perform t.ok(t.throws($q$ select trophe.save_external_food('{"source":"custom","external_id":"x","name":"x","kcal":1}') $q$), 'only online sources');
+  perform t.ok(t.throws($q$ select trophe.save_external_food('{"source":"usda","external_id":"1","name":"x","kcal":5000}') $q$), 'impossible values are still rejected by the table checks');
+  perform t.logout();
+
+  perform t.login('bbbbbbbb-0000-0000-0000-000000000002');
+  id2 := trophe.save_external_food(parle);
+  perform t.ok(id2 <> id1 and (select count(*) from trophe.foods) = 1, 'each user gets their own copy');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

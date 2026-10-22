@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteEntry, logFood, logQuick } from '@/api/diary'
 import { ruleMessage } from '@/api/errors'
 import { fetchServings, frequentFoods, recentFoods, searchFoods } from '@/api/foods'
+import { saveExternalFood, searchOnline, SOURCE_LABEL, usdaFood } from '@/api/online'
 import { listTemplates, logTemplate } from '@/api/templates'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -11,6 +12,7 @@ import { initialAmount, resolveAmount, type AmountState } from '@/lib/amount'
 import { formatDayHeading } from '@/lib/dates'
 import { MEALS } from '@/lib/meals'
 import { describeAmount, fmtG, fmtKcal, scale } from '@/lib/nutrition'
+import type { ExternalFood } from '@/lib/external'
 import type { Food, SuggestedFood } from '@/types/db'
 import { AmountPicker } from './AmountPicker'
 import { Dialog } from './Dialog'
@@ -55,6 +57,30 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   const searchRef = useRef<HTMLInputElement>(null)
 
   const results = useQuery({ queryKey: ['foods', 'search', q], queryFn: () => searchFoods(q, { limit: 25 }), enabled: step.kind === 'pick' && !!q })
+  // online search waits for a longer pause (Open Food Facts allows ~10 searches a minute); Enter skips the wait
+  const [forced, setForced] = useState('')
+  const slow = useDebounced(query.trim(), 700)
+  const oq = forced === query.trim() ? forced : slow
+  const online = useQuery({
+    queryKey: ['online', oq.toLowerCase()], queryFn: () => searchOnline(oq), enabled: step.kind === 'pick' && oq.length >= 3,
+    staleTime: 60 * 60_000, gcTime: 60 * 60_000, retry: false,
+  })
+  const [opening, setOpening] = useState<string | null>(null)
+  // already one of yours? then it's listed above, not again under Online
+  const mine = new Set((results.data ?? []).filter((f) => f.external_id).map((f) => `${f.source}:${f.external_id}`))
+  const onlineFoods = (online.data?.foods ?? []).filter((f) => !mine.has(`${f.source}:${f.external_id}`))
+
+  const pickOnline = async (f: ExternalFood) => {
+    const key = `${f.source}:${f.external_id}`
+    setOpening(key)
+    try {
+      // USDA search results carry no portions; the detail does ("1 medium = 118 g")
+      const full = f.source === 'usda' && f.servings.length === 0 ? (await usdaFood(f.external_id).catch(() => null)) ?? f : f
+      const id = await saveExternalFood(full)
+      void qc.invalidateQueries({ queryKey: ['foods'] })
+      setStep({ kind: 'amount', picked: { food: { ...full, id } } })
+    } catch (err) { toast(ruleMessage(err, 'Couldn’t add that food.'), { kind: 'error' }) } finally { setOpening(null) }
+  }
   const recent = useQuery({ queryKey: ['foods', 'recent', meal], queryFn: () => recentFoods(meal, 8), enabled: step.kind === 'pick' && !q })
   const recentAny = useQuery({ queryKey: ['foods', 'recent', null], queryFn: () => recentFoods(null, 8), enabled: step.kind === 'pick' && !q && recent.data?.length === 0 })
   const frequent = useQuery({ queryKey: ['foods', 'frequent', null], queryFn: () => frequentFoods(null, 8), enabled: step.kind === 'pick' && !q })
@@ -110,8 +136,13 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
         <div>
           <label className="relative block">
             <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your foods…" aria-label="Search your foods"
-              onKeyDown={(e) => { if (e.key === 'Enter' && results.data?.[0]) { e.preventDefault(); setStep({ kind: 'amount', picked: { food: results.data[0] } }) } }}
+            <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search foods — yours and online…" aria-label="Search foods"
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                if (results.data?.[0]) setStep({ kind: 'amount', picked: { food: results.data[0] } })
+                else setForced(query.trim()) // nothing of yours: search online now
+              }}
               className="field pl-10" />
           </label>
 
@@ -119,12 +150,31 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
             {q ? (
               <>
                 {results.isLoading && <div className="skeleton h-12" />}
+                {!!results.data?.length && <p className="label-caps mb-1 px-1">Your foods</p>}
                 <ul>
                   {(results.data ?? []).map((f) => (
                     <FoodRow key={f.id} name={f.name} brand={f.brand} detail={`${fmtKcal(f.kcal)} kcal / 100 g`} onPick={() => setStep({ kind: 'amount', picked: { food: f } })} />
                   ))}
                 </ul>
-                {results.isSuccess && results.data.length === 0 && <p className="px-3 py-3 text-sm text-faint">None of your foods match “{q}”. Create it below. (Online search arrives in Phase 2.)</p>}
+
+                {query.trim().length >= 3 && (
+                  <div className="mt-3">
+                    <p className="label-caps mb-1 px-1">Online</p>
+                    {(online.isFetching || (oq !== query.trim() && !online.data)) && <div className="space-y-1.5 px-1"><div className="skeleton h-11" /><div className="skeleton h-11 opacity-60" /></div>}
+                    {online.isError && <p className="px-3 py-2 text-sm text-danger">{(online.error as Error).message}</p>}
+                    {online.data?.errors.map((e) => <p key={e.source} className="px-3 py-1 text-xs text-important">{e.message}</p>)}
+                    <ul>
+                      {onlineFoods.map((f) => (
+                        <FoodRow key={`${f.source}:${f.external_id}`} name={f.name} brand={f.brand}
+                          detail={<>{fmtKcal(f.kcal)} kcal / 100 g · <span className="text-faint">{opening === `${f.source}:${f.external_id}` ? 'Adding…' : SOURCE_LABEL[f.source]}</span></>}
+                          onPick={() => void pickOnline(f)} />
+                      ))}
+                    </ul>
+                    {online.isSuccess && !online.isFetching && onlineFoods.length === 0 && !online.data.errors.length && <p className="px-3 py-2 text-sm text-faint">Nothing online for “{oq}”. Try fewer words, or create it below.</p>}
+                    {online.isSuccess && <p className="px-3 pt-2 text-[11px] text-faint">Online data: Open Food Facts (ODbL) and USDA FoodData Central. Check packets — crowd-sourced numbers can be off.</p>}
+                  </div>
+                )}
+                {results.isSuccess && results.data.length === 0 && query.trim().length < 3 && <p className="px-3 py-3 text-sm text-faint">None of your foods match “{q}”. Keep typing to search online, or create it below.</p>}
               </>
             ) : (
               <>

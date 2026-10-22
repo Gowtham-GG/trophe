@@ -30,7 +30,7 @@ is multi-user by construction even though it is built for personal use.
 |---|---|---|
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
-| 2. Finding food | Search your foods → Indian dishes (bundled) → Open Food Facts → USDA; barcode scan; quick add (`2 roti dal lunch`); recipes | |
+| 2. Finding food | Online search (Open Food Facts + USDA) **done**; Indian dishes, barcode scan, quick add by typing (`2 roti dal lunch`), recipes | in progress |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
@@ -92,6 +92,22 @@ without a food is a quick add (typed calories).
 `frequent_foods(meal)` (with last amount, for one-tap re-logging), `search_foods(query)`, `copy_entries(from, to, meal,
 to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`.
 
+### Online food search
+
+`api/food-search.ts` is a Vercel function (Vercel free tier — no Supabase compute). It searches **Open Food Facts**
+(packaged foods, many Indian brands; data under ODbL, credited in the app) and **USDA FoodData Central** (ingredients;
+public domain) in parallel and returns both in Trophe's per-100 g shape (`src/lib/external.ts`, unit-tested against
+real responses in `tests/fixtures/`).
+
+* Only signed-in users get answers: the function checks the caller's Supabase token (`/auth/v1/user`), so nobody
+  else can spend the USDA quota. Results are public data, so complete answers are CDN-cached for a day.
+* Open Food Facts allows ~10 searches a minute, so the app searches online only after a 0.7 s pause (or on Enter).
+* Search results are never stored. Picking one calls `save_external_food()`, which copies it (and its servings) into
+  your foods once; picking it again returns that copy and never overwrites your edits.
+* `npm run dev` runs the same function through a small Vite plugin (`vite.config.ts`) — no Vercel CLI needed.
+* `USDA_API_KEY` (server-side env, `.env.local` + Vercel): free at https://api.data.gov/signup/. Without it the shared
+  `DEMO_KEY` allows only ~10 USDA requests an hour.
+
 ---
 
 ## 4. Coexistence with Argus and Mneme (read before touching the database)
@@ -118,6 +134,7 @@ to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, me
 20261022110200_trophe_05_diary.sql      diary entries (copied nutrients), saved meals
 20261022110300_trophe_06_rpc.sql        day/range summaries, recent/frequent, search, copy, saved-meal RPCs
 20261022120000_trophe_07_anon_functions.sql  no function executable by anon/PUBLIC (see its header)
+20261022130000_trophe_08_external_foods.sql  save_external_food(): keep an online food when you pick it
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
