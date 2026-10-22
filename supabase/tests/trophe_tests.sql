@@ -245,6 +245,10 @@ begin
                            where n.nspname = 'public' and c.relkind in ('r', 'v', 'f')), 'Trophe creates nothing in public');
   perform t.ok(not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'trophe' and c.relkind = 'r' and not c.relrowsecurity), 'every trophe table has RLS on');
+  perform t.ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                           where n.nspname = 'trophe' and has_function_privilege('anon', p.oid, 'EXECUTE')),
+               'no trophe function is executable by anon: ' || coalesce((select string_agg(p.proname, ', ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                                                where n.nspname = 'trophe' and has_function_privilege('anon', p.oid, 'EXECUTE')), 'none'));
 end $$;
 
 rollback;

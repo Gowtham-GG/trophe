@@ -117,6 +117,7 @@ to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, me
 20261022110100_trophe_04_goals.sql      goals (by start date), weigh-ins, goal_for()
 20261022110200_trophe_05_diary.sql      diary entries (copied nutrients), saved meals
 20261022110300_trophe_06_rpc.sql        day/range summaries, recent/frequent, search, copy, saved-meal RPCs
+20261022120000_trophe_07_anon_functions.sql  no function executable by anon/PUBLIC (see its header)
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -130,7 +131,12 @@ supabase db query --linked -f supabase/migrations/<file>.sql    # each new file,
 folder stops with *"Remote migration versions not found in local migrations directory"*. Never follow its suggested
 fix (`migration repair --status reverted …` / `db pull`): that would erase Mneme's history and pull other apps'
 schemas in here. Trophe's migrations are idempotent and are not recorded in that history table (recording them would
-break Mneme's own `db push` the same way). Applied so far: 01, 02 (2026-10-22).
+break Mneme's own `db push` the same way). Applied so far: 01–07 (2026-10-22).
+
+**Every migration that creates a function must end with** `revoke execute on all functions in schema trophe from
+public, anon;` and `grant execute on all functions in schema trophe to authenticated;`. Postgres grants new
+functions to PUBLIC and Supabase adds a project-wide grant to anon; per-schema default privileges can't undo either.
+The SQL suite fails if any function is left callable by anon.
 
 ### 5.2 Expose the schema (once, manual)
 

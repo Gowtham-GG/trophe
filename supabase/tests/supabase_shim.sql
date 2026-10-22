@@ -19,3 +19,6 @@ grant usage on schema extensions to anon, authenticated, service_role;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
 grant select on auth.users to authenticated;
+-- Real Supabase grants EXECUTE on every new function to anon/authenticated/service_role through a
+-- project-wide default privilege (not per schema). Mirror it, so tests catch a function left open to anon.
+alter default privileges for role postgres grant execute on functions to anon, authenticated, service_role;
