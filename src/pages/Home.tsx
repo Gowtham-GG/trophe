@@ -2,12 +2,14 @@ import { DayView } from '@/components/DayView'
 import { FastingBanner } from '@/components/FastingBanner'
 import { InsightList } from '@/components/InsightCards'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useHabitSync } from '@/hooks/useHabitSync'
 import { formatFullDate, todayKey } from '@/lib/dates'
 
 /** Today: the day's ring, macros and meals. */
 export function Home() {
   const { timezone: tz } = useSettings()
   const day = todayKey(tz)
+  useHabitSync(day)
   return (
     <div className="h-full overflow-y-auto">
       <div className="page-top mx-auto max-w-5xl px-4 pb-32 lg:px-6 lg:pb-8">

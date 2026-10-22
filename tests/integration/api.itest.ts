@@ -24,6 +24,8 @@ import { logQuickLine } from '@/api/quickLine'
 import * as recipes from '@/api/recipes'
 import * as body from '@/api/body'
 import * as trends from '@/api/trends'
+import * as links from '@/api/links'
+import { habitConditions, habitDelta } from '@/lib/links'
 import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
 import dishes from '@/data/indian-dishes.json'
@@ -263,5 +265,33 @@ describe('eating trends', () => {
     const m = await goals.maintenanceEstimate('2026-10-21')
     expect(m).toMatchObject({ confidence: 'none', estimate_kcal: null, logged_days: 3, goal_kcal: 1800, pace_kg_week: -0.5 })
     expect(m.needs.map((n) => n.kind)).toEqual(['log', 'weigh'])
+  })
+})
+
+describe('links to Mneme and Argus (test stand-ins of their tables)', () => {
+  it('ticks a Mneme habit through its own bump_habit, and reads Argus food spending', async () => {
+    const D = 'dddddddd-0000-0000-0000-00000000000d'
+    psql(`insert into auth.users(id,email) values ('${D}','d@int') on conflict do nothing`)
+    as(D)
+    expect(await links.mnemeHabits()).toEqual([])
+    psql(`insert into mneme.habits (id, user_id, name, target) values ('11111111-0000-0000-0000-0000000000d1', '${D}', 'Protein goal', 1), ('11111111-0000-0000-0000-0000000000d2', '${D}', 'Glasses of water', 8)`)
+    const habits = await links.mnemeHabits()
+    expect(habits?.map((h) => h.name)).toEqual(['Protein goal', 'Glasses of water'])
+
+    // what useHabitSync does: met → fill to the target; undone → empty what Trophe filled
+    const water = habits![1]
+    const met = habitConditions({ entries: 2, protein_g: 0, protein_goal: null }, 2600, 2500).water
+    expect(await links.bumpHabit(water.id, '2026-10-20', habitDelta(met, await links.habitValue(water.id, '2026-10-20'), water.target, false))).toBe(8)
+    expect(await links.bumpHabit(water.id, '2026-10-20', habitDelta(false, 8, water.target, true))).toBe(0)
+    expect(await links.habitValue(water.id, '2026-10-20')).toBe(0)
+
+    psql(`insert into public.categories (id, user_id, name, type) values ('22222222-0000-0000-0000-0000000000d1', '${D}', 'Groceries', 'expense'), ('22222222-0000-0000-0000-0000000000d2', '${D}', 'Rent', 'expense')`)
+    psql(`insert into public.expenses (user_id, category_id, amount, expense_date) values ('${D}', '22222222-0000-0000-0000-0000000000d1', 450, '2026-10-20'), ('${D}', '22222222-0000-0000-0000-0000000000d1', 120.5, '2026-10-20'), ('${D}', '22222222-0000-0000-0000-0000000000d2', 9000, '2026-10-20')`)
+    expect((await links.argusCategories())?.map((c) => c.name)).toEqual(['Groceries', 'Rent'])
+    expect(await links.foodSpending(['22222222-0000-0000-0000-0000000000d1'], '2026-10-01', '2026-10-31')).toEqual([{ day: '2026-10-20', amount: 570.5 }])
+
+    as(A)
+    expect(await links.mnemeHabits()).toEqual([])
+    expect(await links.foodSpending(['22222222-0000-0000-0000-0000000000d1'], '2026-10-01', '2026-10-31')).toEqual([])
   })
 })

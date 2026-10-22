@@ -566,6 +566,17 @@ begin
   perform t.logout();
 end $$;
 
+-- ============================================================== 20. links ==
+do $$
+begin
+  perform t.login('cccccccc-0000-0000-0000-000000000003');
+  perform t.ok((select links from trophe.settings) = '{}'::jsonb, 'no links by default');
+  update trophe.settings set links = '{"mneme": {"protein": "11111111-1111-1111-1111-111111111111"}, "argus": {"food_categories": []}}';
+  perform t.ok((select links->'mneme'->>'protein' from trophe.settings) = '11111111-1111-1111-1111-111111111111', 'links are saved');
+  perform t.ok(t.throws($q$ update trophe.settings set links = '[]' $q$) and t.throws($q$ update trophe.settings set links = '{"mneme": 3}' $q$), 'links keep their shape');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

@@ -5,6 +5,7 @@ import { Card } from '@/components/Card'
 import { InsightList } from '@/components/InsightCards'
 import { MeasurementsCard, WeightCard } from '@/components/progress/BodyCards'
 import { EatingCard, StreaksCard } from '@/components/progress/EatingCards'
+import { FoodSpendingCard } from '@/components/progress/FoodSpendingCard'
 import { MaintenanceCard } from '@/components/progress/MaintenanceCard'
 import { MicrosCard } from '@/components/MicrosCard'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -65,6 +66,7 @@ export function Progress() {
         <EatingCard from={from} to={to} />
         <StreaksCard today={to} />
         <MicrosCard from={from} to={to} />
+        <FoodSpendingCard from={from} to={to} />
         <MeasurementsCard from={from} to={to} />
         <WaterSummary from={from} to={to} />
       </div>

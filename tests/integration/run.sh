@@ -22,10 +22,11 @@ pg_ctl -D "$WORK/pgdata" -o "-p $PGPORT -k $WORK -c listen_addresses=127.0.0.1 -
 PSQL="psql -h 127.0.0.1 -p $PGPORT -U postgres -d postgres -v ON_ERROR_STOP=1 -q"
 $PSQL -f supabase/tests/supabase_shim.sql
 for f in supabase/migrations/*.sql; do $PSQL -f "$f" 2>&1 | grep -v NOTICE || true; done
+$PSQL -f tests/integration/sibling_apps.sql 2>&1 | grep -v NOTICE || true   # Mneme / Argus stand-ins for the links
 
 JWT_SECRET="super-secret-jwt-token-with-at-least-32-characters-long"
 $CT run -d --rm --name trophe-int-rest --network host \
-  -e PGRST_DB_URI="postgres://postgres@127.0.0.1:$PGPORT/postgres" -e PGRST_DB_SCHEMAS=trophe \
+  -e PGRST_DB_URI="postgres://postgres@127.0.0.1:$PGPORT/postgres" -e PGRST_DB_SCHEMAS=trophe,mneme,public \
   -e PGRST_DB_ANON_ROLE=anon -e PGRST_JWT_SECRET="$JWT_SECRET" -e PGRST_SERVER_PORT=$REST \
   docker.io/postgrest/postgrest:latest >/dev/null
 for i in $(seq 1 40); do curl -sf "http://127.0.0.1:$REST/" >/dev/null 2>&1 && break || sleep 0.5; done

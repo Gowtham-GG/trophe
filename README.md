@@ -33,7 +33,7 @@ is multi-user by construction even though it is built for personal use.
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | **done** |
-| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists, recipe import **done**; export, links to Mneme habits / Argus | in progress |
+| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists, recipe import, links to Mneme habits / Argus **done**; export | in progress |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
 ---
@@ -268,6 +268,12 @@ keeps its numbers until it's saved again.
 ## 4. Coexistence with Argus and Mneme (read before touching the database)
 
 * Argus owns `public`, Mneme owns `mneme`. Trophe creates **nothing** outside `trophe` and never modifies their objects.
+* **Connected apps** (Settings, optional) work with their *data*, from the browser, under their own RLS: Trophe ticks
+  the Mneme habits you link through Mneme's own `bump_habit()` (protein goal met, water goal met, food logged; it only
+  unticks what it ticked), and reads Argus `categories` / `expenses` for the categories you mark as food (Progress:
+  food spending, and per 1,000 kcal). Only your choices are stored, in `trophe.settings.links`. The integration tests
+  and the local stack load stand-ins of just those tables (`tests/integration/sibling_apps.sql`, with Mneme's
+  `bump_habit` copied verbatim) and expose `mneme` and `public` to PostgREST, as the real project does.
 * Same Auth users. Trophe adds **no** trigger on `auth.users` (Argus's `handle_new_user` keeps working).
 * The browser session uses its own storage key (`trophe-auth`), so the apps don't overwrite each other's sessions.
 * **Never run `supabase db reset`, `db pull` or `db diff` against the shared project.** Use `db push` (only Trophe's
@@ -299,6 +305,7 @@ keeps its numbers until it's saved again.
 20261022200000_trophe_15_micros.sql          micronutrients on foods and entries; micros_summary()
 20261022210000_trophe_16_fasting.sql         fasts; fasting_stats()
 20261022220000_trophe_17_meal_plans.sql      plan_items, grocery_checks; log_plan(), grocery_list()…
+20261022230000_trophe_18_links.sql           settings.links: Mneme habits to tick, Argus food categories
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.

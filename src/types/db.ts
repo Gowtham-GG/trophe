@@ -1,6 +1,7 @@
 // Row shapes of the `trophe` schema, as PostgREST returns them (numeric → number).
 export type { ThemePref } from '@/lib/themes'
 import type { ThemePref } from '@/lib/themes'
+import type { Links } from '@/lib/links'
 import type { Micros } from '@/lib/micros'
 
 export type Sex = 'male' | 'female'
@@ -15,6 +16,8 @@ export interface Settings {
   height_cm: number | null
   activity: Activity | null
   water_goal_ml: number
+  /** which Mneme habits Trophe ticks, which Argus categories are food (src/lib/links.ts) */
+  links: Links
 }
 
 /** Nutrients per 100 g. */

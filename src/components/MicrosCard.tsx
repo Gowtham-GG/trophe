@@ -26,7 +26,8 @@ function Row({ label, value, unit, of, limit }: { label: string; value: number |
 export function MicrosCard({ from, to, collapsed = false }: { from: string; to: string; collapsed?: boolean }) {
   const q = useQuery({ queryKey: ['diary', 'micros', from, to], queryFn: () => microsSummary(from, to) })
   const s = q.data
-  if (!s || s.entries === 0) return null
+  // nothing logged, or nothing logged that lists any of it: no card full of dashes
+  if (!s || s.entries === 0 || (s.with_micros === 0 && s.sugar_g == null && s.sodium_mg == null)) return null
   const tracked = MICROS.filter((m) => s.micros[m.key] != null).length
   const range = from !== to
 

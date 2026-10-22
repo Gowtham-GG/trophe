@@ -1,8 +1,9 @@
 import { supabase } from '@/lib/supabase'
+import type { Links } from '@/lib/links'
 import type { Activity, Settings, Sex, ThemePref } from '@/types/db'
 import { toError } from './errors'
 
-const SETTINGS_COLUMNS = 'user_id,timezone,theme,sex,birth_year,height_cm,activity,water_goal_ml'
+const SETTINGS_COLUMNS = 'user_id,timezone,theme,sex,birth_year,height_cm,activity,water_goal_ml,links'
 
 export async function fetchSettings(): Promise<Settings | null> {
   const { data, error } = await supabase.from('settings').select(SETTINGS_COLUMNS).maybeSingle()
@@ -18,6 +19,7 @@ export interface SettingsPatch {
   height_cm?: number | null
   activity?: Activity | null
   water_goal_ml?: number
+  links?: Links
 }
 
 /** Upsert: the first save creates the row (no trigger on auth.users, see README "Coexistence"). */
