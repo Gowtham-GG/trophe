@@ -16,6 +16,7 @@ const Diary = lazy(() => import('@/pages/Diary').then((m) => ({ default: m.Diary
 const Progress = lazy(() => import('@/pages/Progress').then((m) => ({ default: m.Progress })))
 const Foods = lazy(() => import('@/pages/Foods').then((m) => ({ default: m.Foods })))
 const Settings = lazy(() => import('@/pages/Settings').then((m) => ({ default: m.Settings })))
+const Fasting = lazy(() => import('@/pages/Fasting').then((m) => ({ default: m.Fasting })))
 
 const Fallback = <div className="p-8 text-sm text-faint">Loading…</div>
 
@@ -36,6 +37,7 @@ export default function App() {
                     <Route path="progress" element={<Progress />} />
                     <Route path="foods" element={<Foods />} />
                     <Route path="settings" element={<Settings />} />
+                    <Route path="fasting" element={<Fasting />} />
                     <Route path="*" element={<div className="p-8"><h1 className="text-lg font-semibold">Not found</h1></div>} />
                   </Route>
                 </Routes>

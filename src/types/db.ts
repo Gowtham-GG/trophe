@@ -108,6 +108,9 @@ export interface Streaks { logging_current: number; logging_best: number; target
 /** micros_summary(): averages per logged day over a range, and how many entries carried micronutrient data. */
 export interface MicrosSummary { logged_days: number; entries: number; with_micros: number; sugar_g: number | null; sodium_mg: number | null; micros: Micros }
 
+export interface Fast { id: string; started_at: string; ended_at: string | null; target_hours: number }
+export interface FastingStats { count: number; reached: number; avg_hours: number | null; longest_hours: number | null }
+
 /** A logged item: nutrients are this entry's own totals (copied when logged). */
 export interface DiaryEntry {
   id: string

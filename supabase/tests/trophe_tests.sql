@@ -508,6 +508,27 @@ begin
   perform t.logout();
 end $$;
 
+-- ============================================================= 18. fasting ==
+do $$
+begin
+  perform t.login('88888888-0000-0000-0000-000000000008');
+  perform t.ok(trophe.fasting_stats() = '{"count": 0, "reached": 0, "avg_hours": null, "longest_hours": null}'::jsonb, 'no fasts yet');
+  insert into trophe.fasts (started_at, ended_at, target_hours) values
+    (now() - interval '3 days', now() - interval '3 days' + interval '16 hours 30 minutes', 16),
+    (now() - interval '2 days', now() - interval '2 days' + interval '13 hours', 16),
+    (now() - interval '40 days', now() - interval '40 days' + interval '20 hours', 16);
+  insert into trophe.fasts (started_at, target_hours) values (now() - interval '2 hours', 14);
+  perform t.ok(t.throws($q$ insert into trophe.fasts (started_at, target_hours) values (now(), 16) $q$), 'only one fast runs at a time');
+  perform t.ok(t.throws($q$ insert into trophe.fasts (started_at, ended_at, target_hours) values (now() - interval '1 hour', now() - interval '2 hours', 16) $q$), 'a fast ends after it starts');
+  perform t.ok(t.throws($q$ insert into trophe.fasts (started_at, target_hours) values (now() + interval '1 day', 16) $q$), 'a fast can''t start in the future');
+  perform t.ok(trophe.fasting_stats() = '{"count": 2, "reached": 1, "avg_hours": 14.8, "longest_hours": 16.5}'::jsonb,
+               'stats: finished fasts of the last 30 days: ' || trophe.fasting_stats()::text);
+  perform t.logout();
+  perform t.login('cccccccc-0000-0000-0000-000000000003');
+  perform t.ok(not exists (select 1 from trophe.fasts) and (trophe.fasting_stats()->>'count')::int = 0, 'another user sees no fasts');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin
