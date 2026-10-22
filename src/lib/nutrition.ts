@@ -67,6 +67,17 @@ export function macroTargets(kcal: number, kg: number, proteinPerKg: number, fat
   return { protein_g, carbs_g, fat_g, fiber_g }
 }
 
+/**
+ * A goal moved to a new calorie target: protein stays (it's set per kg of body weight, but never above 60 % of
+ * calories), fat stays unless what's left can't hold it, and carbs take the difference. Fibre follows calories.
+ */
+export function rescaleGoal(g: { protein_g: number; fat_g: number }, kcal: number): { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number } {
+  const protein_g = Math.min(g.protein_g, Math.floor((kcal * 0.6) / 4))
+  const fat_g = Math.min(g.fat_g, Math.floor((kcal - protein_g * 4) / 9))
+  const carbs_g = Math.max(0, Math.round((kcal - protein_g * 4 - fat_g * 9) / 4))
+  return { kcal, protein_g, carbs_g, fat_g, fiber_g: Math.round((kcal / 1000) * 14) }
+}
+
 export const ageIn = (birthYear: number, today: string) => Number(today.slice(0, 4)) - birthYear
 
 // ------------------------------------------------------------------ display --

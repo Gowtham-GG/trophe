@@ -410,6 +410,38 @@ begin
   perform t.logout();
 end $$;
 
+-- ================================================= 15. adaptive target ==
+insert into auth.users (id, email) values ('eeeeeeee-0000-0000-0000-000000000005', 'e@test');
+do $$
+declare j jsonb; today date := '2026-10-29';
+begin
+  perform t.login('eeeeeeee-0000-0000-0000-000000000005');
+  j := trophe.maintenance_estimate(today);
+  perform t.ok(j->>'confidence' = 'none' and j->'estimate_kcal' = 'null'::jsonb and jsonb_array_length(j->'needs') = 2, 'no data: no estimate, and what''s missing');
+
+  insert into trophe.goals (effective_from, kcal, protein_g, carbs_g, fat_g, pace_kg_week) values ('2026-09-01', 1800, 130, 180, 60, -0.5);
+  -- weight steady at 80 kg (weighed every other day), 2200 kcal on 24 of the 28 days
+  insert into trophe.weigh_ins (day, kg) select today - g, 80 from generate_series(2, 60, 2) g;
+  insert into trophe.diary_entries (day, meal, name, kcal) select today - g, 'lunch', 'x', 2200 from generate_series(1, 28) g where g % 7 <> 3;
+  -- today's (unfinished) intake doesn't count
+  insert into trophe.diary_entries (day, meal, name, kcal) values (today, 'lunch', 'x', 300);
+  j := trophe.maintenance_estimate(today);
+  perform t.ok((j->>'logged_days')::int = 24 and (j->>'avg_kcal')::int = 2200 and (j->>'change_kg')::numeric = 0, 'the window is the 28 days before today');
+  perform t.ok((j->>'estimate_kcal')::int = 2200 and j->>'confidence' = 'high', 'steady weight: maintenance = what you ate');
+  perform t.ok((j->>'suggested_kcal')::int = 1650 and (j->>'goal_kcal')::int = 1800, 'the goal''s pace (−0.5 kg / week = −550 kcal a day) gives the suggestion');
+
+  -- the scale drops to 79 inside the window: the trend falls, so maintenance is above intake
+  update trophe.weigh_ins set kg = 79 where day >= today - 20;
+  j := trophe.maintenance_estimate(today);
+  perform t.ok((j->>'change_kg')::numeric < 0 and (j->>'estimate_kcal')::int > 2200
+               and (j->>'estimate_kcal')::numeric = round((2200 - (j->>'change_kg')::numeric * 7700 / ((j->'trend_to'->>'day')::date - (j->'trend_from'->>'day')::date)) / 10) * 10,
+               'losing weight: maintenance = intake + the energy the trend lost per day');
+
+  update trophe.goals set pace_kg_week = -2;
+  perform t.ok((trophe.maintenance_estimate(today)->>'suggested_kcal')::int >= 1200, 'the suggestion never goes below the safe minimum');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

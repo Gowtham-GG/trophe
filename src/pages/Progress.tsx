@@ -4,6 +4,7 @@ import { waterRange } from '@/api/body'
 import { Card } from '@/components/Card'
 import { MeasurementsCard, WeightCard } from '@/components/progress/BodyCards'
 import { EatingCard, StreaksCard } from '@/components/progress/EatingCards'
+import { MaintenanceCard } from '@/components/progress/MaintenanceCard'
 import { useSettings } from '@/contexts/SettingsContext'
 import { addDays, todayKey } from '@/lib/dates'
 
@@ -57,6 +58,7 @@ export function Progress() {
           ))}
         </div>
         <WeightCard from={from} to={to} />
+        <MaintenanceCard today={to} />
         <EatingCard from={from} to={to} />
         <StreaksCard today={to} />
         <MeasurementsCard from={from} to={to} />

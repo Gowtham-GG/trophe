@@ -41,7 +41,7 @@ export function WeightCard({ from, to }: { from: string; to: string }) {
     try {
       await saveWeighIn(to, Math.round(v * 100) / 100)
       setText('')
-      void qc.invalidateQueries({ queryKey: ['weight'] })
+      for (const key of ['weight', 'weigh-ins', 'maintenance']) void qc.invalidateQueries({ queryKey: [key] })
       toast(`Saved ${kg(v)} for today`)
     } catch (err) { toast(ruleMessage(err, 'Couldn’t save the weight.'), { kind: 'error' }) } finally { setBusy(false) }
   }

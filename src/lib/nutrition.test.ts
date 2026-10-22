@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageIn, bmr, describeAmount, fmtG, fmtKcal, kcalFromMacros, macroTargets, scale, targetKcal, tdee } from './nutrition'
+import { ageIn, bmr, describeAmount, fmtG, fmtKcal, kcalFromMacros, macroTargets, rescaleGoal, scale, targetKcal, tdee } from './nutrition'
 
 const chapati = { kcal: 297, protein_g: 11, carbs_g: 46, fat_g: 7.5, fiber_g: 9 }
 
@@ -41,5 +41,17 @@ describe('nutrition', () => {
     expect(describeAmount({ grams: 40, serving_label: '1 roti', serving_qty: 1 })).toBe('1 roti (40 g)')
     expect(describeAmount({ grams: 150, serving_label: null, serving_qty: null })).toBe('150 g')
     expect(describeAmount({ grams: null, serving_label: null, serving_qty: null })).toBe('')
+  })
+})
+
+describe('rescaleGoal', () => {
+  it('keeps protein and fat, carbs take the difference', () => {
+    expect(rescaleGoal({ protein_g: 130, fat_g: 60 }, 1650)).toEqual({ kcal: 1650, protein_g: 130, carbs_g: 148, fat_g: 60, fiber_g: 23 })
+    expect(rescaleGoal({ protein_g: 130, fat_g: 60 }, 2400)).toMatchObject({ protein_g: 130, fat_g: 60, carbs_g: 335 })
+  })
+  it('a target too small for them trims protein to 60 % and fat to what is left', () => {
+    const r = rescaleGoal({ protein_g: 200, fat_g: 90 }, 1200)
+    expect(r).toEqual({ kcal: 1200, protein_g: 180, carbs_g: 1, fat_g: 53, fiber_g: 17 })
+    expect(r.protein_g * 4 + r.fat_g * 9).toBeLessThanOrEqual(1200)
   })
 })

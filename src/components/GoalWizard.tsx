@@ -62,8 +62,8 @@ export function GoalWizard({ onClose }: { onClose: () => void }) {
     try {
       await update({ sex, birth_year: n(birthYear), height_cm: n(height), activity })
       await saveWeighIn(today, n(kgText))
-      await saveGoal({ effective_from: today, ...final, fiber_g: Math.round((final.kcal / 1000) * 14) })
-      void qc.invalidateQueries({ queryKey: ['diary'] }); void qc.invalidateQueries({ queryKey: ['goals'] }); void qc.invalidateQueries({ queryKey: ['weigh-ins'] })
+      await saveGoal({ effective_from: today, ...final, fiber_g: Math.round((final.kcal / 1000) * 14), pace_kg_week: pace })
+      for (const key of ['diary', 'goals', 'weigh-ins', 'weight', 'maintenance']) void qc.invalidateQueries({ queryKey: [key] })
       toast(`Goal set: ${final.kcal.toLocaleString('en-IN')} kcal a day`)
       onClose()
     } catch (err) { setError(ruleMessage(err, 'Couldn’t save the goal.')) } finally { setBusy(false) }

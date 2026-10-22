@@ -255,4 +255,13 @@ describe('eating trends', () => {
     expect(s).toMatchObject({ days: 7, logged_days: 3, avg: { kcal: 2183 }, weekday: { kcal: 1975, days: 2 }, weekend: { kcal: 2600, days: 1 }, status: { on: 2, over: 1 } })
     expect(await trends.streaks('2026-10-14')).toEqual({ logging_current: 2, logging_best: 2, target_current: 2, target_best: 2 })
   })
+
+  it('goals keep their pace; the maintenance estimate says what it still needs', async () => {
+    as('cccccccc-0000-0000-0000-00000000000c')
+    await goals.saveGoal({ effective_from: '2026-10-20', kcal: 1800, protein_g: 130, carbs_g: 180, fat_g: 60, fiber_g: 25, pace_kg_week: -0.5 })
+    expect((await goals.goalFor('2026-10-21'))?.pace_kg_week).toBe(-0.5)
+    const m = await goals.maintenanceEstimate('2026-10-21')
+    expect(m).toMatchObject({ confidence: 'none', estimate_kcal: null, logged_days: 3, goal_kcal: 1800, pace_kg_week: -0.5 })
+    expect(m.needs.map((n) => n.kind)).toEqual(['log', 'weigh'])
+  })
 })

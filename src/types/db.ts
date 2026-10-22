@@ -132,6 +132,28 @@ export interface Goal {
   carbs_g: number
   fat_g: number
   fiber_g: number | null
+  /** the pace the goal was set for, kg / week (negative = lose); null when typed in by hand */
+  pace_kg_week?: number | null
+}
+
+/** maintenance_estimate(): maintenance measured from the last 4 weeks of intake and weight trend. */
+export interface MaintenanceEstimate {
+  from: string
+  to: string
+  days: number
+  logged_days: number
+  avg_kcal: number | null
+  weigh_ins: number
+  trend_from: { day: string; trend: number } | null
+  trend_to: { day: string; trend: number } | null
+  change_kg: number | null
+  estimate_kcal: number | null
+  /** none = not enough data; low = the numbers don't look like a real maintenance (meals probably missing) */
+  confidence: 'none' | 'low' | 'medium' | 'high'
+  needs: ({ kind: 'log'; count: number } | { kind: 'weigh'; count: number; span: number })[]
+  goal_kcal: number | null
+  pace_kg_week: number | null
+  suggested_kcal: number | null
 }
 
 export interface MacroTotals { kcal: number; protein_g: number; carbs_g: number; fat_g: number; entries: number }
