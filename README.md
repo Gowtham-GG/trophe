@@ -330,7 +330,7 @@ supabase db query --linked -f supabase/migrations/<file>.sql    # each new file,
 folder stops with *"Remote migration versions not found in local migrations directory"*. Never follow its suggested
 fix (`migration repair --status reverted …` / `db pull`): that would erase Mneme's history and pull other apps'
 schemas in here. Trophe's migrations are idempotent and are not recorded in that history table (recording them would
-break Mneme's own `db push` the same way). Applied so far: 01–07 (2026-10-22).
+break Mneme's own `db push` the same way). Applied so far: 01–19 (2026-10-22).
 
 **Every migration that creates a function must end with** `revoke execute on all functions in schema trophe from
 public, anon;` and `grant execute on all functions in schema trophe to authenticated;`. Postgres grants new
