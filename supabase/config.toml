@@ -1,0 +1,13 @@
+# Minimal Supabase CLI config for Trophe (linking / pushing migrations, optional local stack).
+# This project SHARES a Supabase project with Argus and Mneme. See README "Coexistence".
+project_id = "trophe"
+
+[api]
+enabled = true
+# "trophe" must also be added to Dashboard -> Settings -> API -> Exposed schemas on the hosted project.
+schemas = ["public", "graphql_public", "trophe"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+major_version = 17
