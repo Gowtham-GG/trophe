@@ -103,7 +103,17 @@ Phase 1 adds `goals`, `foods`, `food_servings`, `meal_templates`, `diary_entries
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
-**Option B – CLI:** `supabase link --project-ref <your-project-ref>` (the SAME project as Argus) then `supabase db push`.
+**Option B – CLI** (after `supabase link --project-ref <your-project-ref>`, the SAME project as Argus):
+
+```bash
+supabase db query --linked -f supabase/migrations/<file>.sql    # each new file, in order
+```
+
+**Not `supabase db push`.** The shared project's migration history holds Mneme's entries, so `db push` from this
+folder stops with *"Remote migration versions not found in local migrations directory"*. Never follow its suggested
+fix (`migration repair --status reverted …` / `db pull`): that would erase Mneme's history and pull other apps'
+schemas in here. Trophe's migrations are idempotent and are not recorded in that history table (recording them would
+break Mneme's own `db push` the same way). Applied so far: 01, 02 (2026-10-22).
 
 ### 5.2 Expose the schema (once, manual)
 
