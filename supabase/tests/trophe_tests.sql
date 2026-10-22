@@ -287,6 +287,58 @@ begin
   perform t.logout();
 end $$;
 
+-- =========================================================== 12. recipes ==
+do $$
+declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; rice uuid; dal uuid; ghee uuid; r uuid; r2 uuid; e uuid;
+begin
+  perform t.login(a);
+  insert into trophe.foods (name, kcal, protein_g, carbs_g, fat_g, fiber_g) values ('R rice raw', 360, 7, 79, 0.6, 1.3) returning id into rice;
+  insert into trophe.foods (name, kcal, protein_g, carbs_g, fat_g, fiber_g) values ('R toor dal raw', 340, 22, 60, 1.5, 15) returning id into dal;
+  insert into trophe.foods (name, kcal, fat_g) values ('R ghee', 900, 100) returning id into ghee;
+
+  -- 200 g rice + 100 g dal + 20 g ghee = 1240 kcal raw; cooked weight 1000 g, 4 portions
+  r := trophe.save_recipe(null, ' Khichdi ', jsonb_build_array(
+         jsonb_build_object('food_id', rice, 'grams', 200),
+         jsonb_build_object('food_id', dal, 'grams', 100, 'serving_label', '1 cup', 'serving_qty', 0.5),
+         jsonb_build_object('food_id', ghee, 'grams', 20)), 1000, 4);
+  perform t.ok((select concat_ws('|', name, source, kcal, protein_g, carbs_g, fat_g, fiber_g) from trophe.foods where id = r) = 'Khichdi|recipe|124.0|3.6|21.8|2.3|1.8',
+               'a recipe''s numbers per 100 g come from its ingredients and the cooked weight');
+  perform t.ok((select string_agg(label || '=' || grams, ',') from trophe.food_servings where food_id = r) = '1 portion=250.0', '"1 portion" = cooked weight / portions');
+  perform t.ok((select string_agg(serving_label || ':' || position, ',' order by position) from trophe.recipe_items where recipe_id = r) = '1 cup:1', 'items keep their order and how they were entered');
+
+  insert into trophe.diary_entries (day, meal, food_id, grams, serving_label, serving_qty) values ('2026-10-05', 'lunch', r, 250, '1 portion', 1) returning id into e;
+  perform t.ok((select kcal from trophe.diary_entries where id = e) = 310.0, 'a recipe is logged like any food');
+
+  -- editing an ingredient updates the recipe (but never the diary)
+  update trophe.foods set kcal = 400 where id = rice;
+  perform t.ok((select kcal from trophe.foods where id = r) = 132.0, 'an ingredient edit updates its recipes');
+  perform t.ok((select kcal from trophe.diary_entries where id = e) = 310.0, '... while logged entries keep their numbers');
+
+  -- re-saving: no cooked weight = the raw total; no portions = no portion serving
+  r2 := trophe.save_recipe(r, 'Khichdi', jsonb_build_array(jsonb_build_object('food_id', rice, 'grams', 100)), null, null);
+  perform t.ok(r2 = r and (select kcal from trophe.foods where id = r) = 400 and not exists (select 1 from trophe.food_servings where food_id = r)
+               and (select count(*) from trophe.recipe_items where recipe_id = r) = 1, 're-saving replaces the items; raw total when no cooked weight');
+
+  perform t.ok(t.throws(format($q$ select trophe.save_recipe(null, 'Bad', '[{"food_id":"%s","grams":100}]', 10) $q$, ghee)), 'a cooked weight too low for the ingredients is refused');
+  perform t.ok(t.throws($q$ select trophe.save_recipe(null, 'Empty', '[]') $q$), 'a recipe needs an ingredient');
+  perform t.ok(t.throws($q$ select trophe.save_recipe(null, '  ', '[]') $q$), 'a recipe needs a name');
+  perform t.ok(t.throws(format($q$ select trophe.save_recipe(null, 'Nested', '[{"food_id":"%s","grams":100}]') $q$, r)), 'a recipe can''t be an ingredient');
+  perform t.ok(t.throws(format($q$ insert into trophe.recipe_items (recipe_id, food_id, grams) values (%L, %L, 10) $q$, rice, dal)), 'items only go into recipes');
+  perform t.ok(t.throws(format($q$ select trophe.save_recipe(%L, 'Hijack', '[{"food_id":"%s","grams":100}]') $q$, rice, rice)), 'save_recipe only edits recipes');
+
+  -- an edit that would make the recipe impossible still goes through; the recipe keeps its numbers
+  perform trophe.save_recipe(r, 'Khichdi', jsonb_build_array(jsonb_build_object('food_id', rice, 'grams', 100)), 90, null);
+  update trophe.foods set kcal = 900 where id = rice;
+  perform t.ok((select kcal from trophe.foods where id = rice) = 900 and (select kcal from trophe.foods where id = r) = 444.4, 'an impossible recompute leaves the recipe as it was');
+  perform t.logout();
+
+  perform t.login('bbbbbbbb-0000-0000-0000-000000000002');
+  perform t.ok(t.throws(format($q$ select trophe.save_recipe(null, 'Mine now', '[{"food_id":"%s","grams":100}]') $q$, rice)), 'B can''t use A''s food as an ingredient');
+  perform t.ok(t.throws(format($q$ select trophe.save_recipe(%L, 'Mine now', '[]') $q$, r)), 'B can''t edit A''s recipe');
+  perform t.ok(t.n('select count(*) from trophe.recipe_items') = 0, 'B sees none of A''s recipe items');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

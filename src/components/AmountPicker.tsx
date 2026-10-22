@@ -6,8 +6,10 @@ import type { FoodServing } from '@/types/db'
 const QUICK = [0.5, 1, 1.5, 2]
 
 /** Quantity + unit (the food's servings, or grams). Typing "1,5" or "½" works; quick buttons for servings. */
-export function AmountPicker({ servings, value, onChange, autoFocus }: {
+export function AmountPicker({ servings, value, onChange, autoFocus, compact }: {
   servings: Pick<FoodServing, 'id' | 'label' | 'grams'>[]; value: AmountState; onChange: (a: AmountState) => void; autoFocus?: boolean
+  /** a row in a list: smaller, without the quick ½ / 1 / 1½ / 2 buttons */
+  compact?: boolean
 }) {
   const [text, setText] = useState(fmtG(value.qty))
   const setQty = (q: number) => { setText(fmtG(q)); onChange({ ...value, qty: q }) }
@@ -18,7 +20,7 @@ export function AmountPicker({ servings, value, onChange, autoFocus }: {
           inputMode="decimal" aria-label="Quantity" autoFocus={autoFocus} value={text}
           onChange={(e) => { setText(e.target.value); onChange({ ...value, qty: parseQty(e.target.value) }) }}
           onFocus={(e) => e.target.select()}
-          className="field w-24 text-center text-lg font-semibold tabular-nums"
+          className={`field text-center tabular-nums ${compact ? 'w-20' : 'w-24 text-lg font-semibold'}`}
         />
         <select aria-label="Unit" value={value.unit} className="field min-w-0 flex-1"
           onChange={(e) => {
@@ -32,7 +34,7 @@ export function AmountPicker({ servings, value, onChange, autoFocus }: {
           <option value="g">grams</option>
         </select>
       </div>
-      {value.unit !== 'g' && (
+      {value.unit !== 'g' && !compact && (
         <div className="mt-2 flex gap-1.5">
           {QUICK.map((q) => (
             <button key={q} type="button" onClick={() => setQty(q)}

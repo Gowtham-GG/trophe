@@ -21,6 +21,7 @@ import * as diary from '@/api/diary'
 import * as goals from '@/api/goals'
 import * as templates from '@/api/templates'
 import { logQuickLine } from '@/api/quickLine'
+import * as recipes from '@/api/recipes'
 import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
 import dishes from '@/data/indian-dishes.json'
@@ -182,5 +183,30 @@ describe('quick add by typing', () => {
 
     as(B)
     expect(await foods.quickLogFoods()).toEqual([])
+  })
+})
+
+describe('recipes', () => {
+  it('saves a recipe from ingredients, reads them back with their foods, logs it by the portion', async () => {
+    as(A)
+    const rice = await foods.createFood({ name: 'Rice raw', brand: null, barcode: null, kcal: 360, protein_g: 7, carbs_g: 79, fat_g: 0.6, fiber_g: 1.3, sugar_g: null, sodium_mg: null })
+    const ghee = await foods.createFood({ name: 'Ghee', brand: null, barcode: null, kcal: 900, protein_g: 0, carbs_g: 0, fat_g: 100, fiber_g: null, sugar_g: null, sodium_mg: null })
+    await foods.saveServings(ghee.id, [{ label: '1 tbsp', grams: 14 }])
+    const id = await recipes.saveRecipe(null, {
+      name: 'Ghee rice', cooked_g: 600, portions: 3,
+      items: [{ food_id: rice.id, grams: 200, serving_label: null, serving_qty: null }, { food_id: ghee.id, grams: 28, serving_label: '1 tbsp', serving_qty: 2 }],
+    })
+    const r = await foods.fetchFood(id)
+    expect(r).toMatchObject({ name: 'Ghee rice', source: 'recipe', kcal: 162, recipe_cooked_g: 600, recipe_portions: 3 })
+    const items = await recipes.fetchRecipeItems(id)
+    expect(items.map((i) => [i.food.name, i.grams, i.serving_label])).toEqual([['Rice raw', 200, null], ['Ghee', 28, '1 tbsp']])
+    expect(items[1].food.food_servings.map((s) => s.label)).toEqual(['1 tbsp'])
+    expect(await foods.fetchServings(id)).toMatchObject([{ label: '1 portion', grams: 200 }])
+    const e = await diary.logFood({ day: '2026-10-25', meal: 'dinner', food_id: id, grams: 200, serving_label: '1 portion', serving_qty: 1 })
+    expect(e.kcal).toBe(324)
+    await expect(recipes.saveRecipe(null, { name: 'Loop', cooked_g: null, portions: null, items: [{ food_id: id, grams: 10, serving_label: null, serving_qty: null }] }))
+      .rejects.toMatchObject({ message: expect.stringContaining("can't be an ingredient") })
+    as(B)
+    expect(await recipes.fetchRecipeItems(id)).toEqual([])
   })
 })

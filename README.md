@@ -30,7 +30,7 @@ is multi-user by construction even though it is built for personal use.
 |---|---|---|
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
-| 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan **done**; recipes | in progress |
+| 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
@@ -82,6 +82,7 @@ references auth.users on delete cascade` and one RLS policy `user_id = (select a
 | `goals` | kcal + macros + fibre from `effective_from`; a day is judged by the goal in force then |
 | `weigh_ins` | one weight per day (the goal wizard records it; trend in Phase 3) |
 | `meal_templates`, `meal_template_items` | saved meals ("usual breakfast") |
+| `recipe_items` | a recipe's ingredients (a recipe is a food with source `recipe`, plus its cooked weight and portions) |
 
 **History never changes.** `diary_before_write` copies the food's nutrients into the entry when it's logged. Editing
 or deleting the food later leaves past days as they were; changing an entry's grams rescales its own copy. An entry
@@ -91,7 +92,8 @@ without a food is a quick add (typed calories).
 (per day + verdict: empty / logged / under < 90 % / on / over > 110 % of that day's goal), `recent_foods(meal)`,
 `frequent_foods(meal)` (with last amount, for one-tap re-logging), `search_foods(query)`, `copy_entries(from, to, meal,
 to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`,
-`save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount).
+`save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount),
+`save_recipe(id, name, items, cooked_g, portions)`.
 
 ### Online food search
 
@@ -145,6 +147,16 @@ looked up in your foods first (any written form: UPC-A, EAN-13, GTIN-14), then o
 so the next scan finds it. Chrome on Android uses the built-in `BarcodeDetector`; other browsers load a WebAssembly
 ZXing reader (`barcode-detector`, pinned) from our own origin, never precached, only when a scan starts.
 
+### Recipes
+
+Foods → **New recipe**: add ingredients (your foods or Indian dishes) with amounts, optionally the cooked weight
+(everything in the pot after cooking, without the pot — water boils off, so 100 g cooked ≠ 100 g raw) and the number
+of portions. `save_recipe()` stores the recipe as a food whose numbers per 100 g are worked out in Postgres
+(`recipe_recompute`), with a `1 portion` serving, so it's logged, searched and quick-added like any food (`1 portion
+khichdi`). Editing an ingredient's nutrients updates its recipes (a trigger); entries already logged keep their numbers
+as always. Recipes can't be ingredients of other recipes. Deleting an ingredient food drops it from the recipe, which
+keeps its numbers until it's saved again.
+
 ---
 
 ## 4. Coexistence with Argus and Mneme (read before touching the database)
@@ -173,6 +185,7 @@ ZXing reader (`barcode-detector`, pinned) from our own origin, never precached, 
 20261022120000_trophe_07_anon_functions.sql  no function executable by anon/PUBLIC (see its header)
 20261022130000_trophe_08_external_foods.sql  save_external_food(): keep an online food when you pick it
 20261022140000_trophe_09_quick_log.sql       quick_log_foods(): your foods, servings and last amounts for quick add
+20261022150000_trophe_10_recipes.sql         recipes: recipe_items, save_recipe(), numbers kept in step with ingredients
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -242,7 +255,7 @@ npm run dev          # http://localhost:5173 — sign in with your Argus/Mneme a
 
 ```bash
 npm test          # unit tests (vitest): env checks, dates/timezones, themes, meals, nutrition maths, amounts,
-                  #   online-food normalising, the Indian dishes list, the quick-add parser
+                  #   online-food normalising, barcodes, the Indian dishes list, the quick-add parser, recipe maths
 npm run test:sql  # SQL suite in a throwaway local Postgres (needs initdb/pg_ctl/psql)
 npm run test:int  # integration: real API code + real migrations through PostgREST (needs podman or docker)
 npm run lint && npm run build
@@ -250,7 +263,7 @@ npm run lint && npm run build
 
 * **SQL suite** (`supabase/tests/trophe_tests.sql`, rolled back at the end): settings defaults and checks, upsert
   behaviour, food checks, nutrient copying and history staying fixed, goals by date, range verdicts, recent/frequent,
-  search, copying and saved meals, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
+  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
   anon has no access, and coexistence checks (no trigger on `auth.users`, nothing in `public`, RLS on every table).
   The runner also applies every migration twice to prove they are idempotent. It never touches your Supabase project.
 * **Integration** (`npm run test:int`): `initdb/pg_ctl`, `psql`, `podman` (or `CONTAINER_CLI=docker`) and network

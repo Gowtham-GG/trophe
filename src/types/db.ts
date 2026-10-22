@@ -21,7 +21,7 @@ export interface Food {
   user_id: string
   name: string
   brand: string | null
-  source: 'custom' | 'off' | 'usda' | 'ifct'
+  source: 'custom' | 'off' | 'usda' | 'ifct' | 'recipe'
   external_id: string | null
   barcode: string | null
   kcal: number
@@ -31,9 +31,23 @@ export interface Food {
   fiber_g: number | null
   sugar_g: number | null
   sodium_mg: number | null
+  /** recipes only: the whole pot after cooking (null = the raw total), and how many portions it makes */
+  recipe_cooked_g: number | null
+  recipe_portions: number | null
   archived_at: string | null
   created_at: string
   updated_at: string
+}
+
+/** One ingredient of a recipe, with the ingredient food (and its servings, for editing the amount). */
+export interface RecipeItem {
+  id: string
+  food_id: string
+  grams: number
+  serving_label: string | null
+  serving_qty: number | null
+  position: number
+  food: Pick<Food, 'id' | 'name' | 'brand' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'> & { food_servings: Pick<FoodServing, 'id' | 'label' | 'grams' | 'position'>[] }
 }
 
 export interface FoodServing {

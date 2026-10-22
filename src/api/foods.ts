@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import type { Food, FoodServing, QuickLogFood, SuggestedFood } from '@/types/db'
 import { toError } from './errors'
 
-const FOOD_COLUMNS = 'id,user_id,name,brand,source,external_id,barcode,kcal,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,archived_at,created_at,updated_at'
+const FOOD_COLUMNS = 'id,user_id,name,brand,source,external_id,barcode,kcal,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,recipe_cooked_g,recipe_portions,archived_at,created_at,updated_at'
 
 /** Your own foods: every word must match name or brand. Empty query = all (most used first). */
 export async function searchFoods(query: string, opts: { archived?: boolean; limit?: number } = {}): Promise<Food[]> {

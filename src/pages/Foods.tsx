@@ -6,6 +6,7 @@ import { deleteTemplate, listTemplates } from '@/api/templates'
 import { Card } from '@/components/Card'
 import { ConfirmDialog, Dialog } from '@/components/Dialog'
 import { FoodForm } from '@/components/FoodForm'
+import { RecipeForm } from '@/components/RecipeForm'
 import { IconPlus, IconSearch } from '@/components/icons'
 import { NutritionLine } from '@/components/NutritionLine'
 import { useToast } from '@/contexts/ToastContext'
@@ -15,12 +16,13 @@ import type { Food } from '@/types/db'
 
 type Tab = 'foods' | 'archived' | 'meals'
 
-/** Edit a food (with its servings), archive / restore it, or delete it for good. */
-function FoodDialog({ food, onClose }: { food: Food | 'new'; onClose: () => void }) {
+/** Edit a food (with its servings) or a recipe (with its ingredients), archive / restore it, or delete it for good. */
+function FoodDialog({ food, onClose }: { food: Food | 'new' | 'new-recipe'; onClose: () => void }) {
   const qc = useQueryClient()
   const { toast } = useToast()
-  const existing = food === 'new' ? null : food
-  const servings = useQuery({ queryKey: ['foods', 'servings', existing?.id], queryFn: () => fetchServings(existing!.id), enabled: !!existing })
+  const existing = typeof food === 'string' ? null : food
+  const isRecipe = food === 'new-recipe' || existing?.source === 'recipe'
+  const servings = useQuery({ queryKey: ['foods', 'servings', existing?.id], queryFn: () => fetchServings(existing!.id), enabled: !!existing && !isRecipe })
   const [confirm, setConfirm] = useState(false)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['foods'] })
 
@@ -38,9 +40,12 @@ function FoodDialog({ food, onClose }: { food: Food | 'new'; onClose: () => void
   }
 
   return (
-    <Dialog open onClose={onClose} title={existing ? `Edit ${existing.name}` : 'New food'} wide closable>
-      <h2 className="mb-4 pr-8 text-xl font-semibold">{existing ? 'Edit food' : 'New food'}</h2>
-      {existing && !servings.isFetched ? <div className="skeleton h-40" /> : (
+    <Dialog open onClose={onClose} title={existing ? `Edit ${existing.name}` : isRecipe ? 'New recipe' : 'New food'} wide closable>
+      <h2 className="mb-4 pr-8 text-xl font-semibold">{isRecipe ? (existing ? 'Edit recipe' : 'New recipe') : existing ? 'Edit food' : 'New food'}</h2>
+      {isRecipe ? (
+        <RecipeForm recipe={existing ?? undefined} onCancel={onClose}
+          onSaved={(_, name) => { refresh(); void qc.invalidateQueries({ queryKey: ['recipe'] }); onClose(); toast(`${existing ? 'Saved' : 'Created'} ${name}`) }} />
+      ) : existing && !servings.isFetched ? <div className="skeleton h-40" /> : (
         <FoodForm food={existing ?? undefined} servings={servings.data ?? []} onCancel={onClose}
           onSaved={(f) => { refresh(); onClose(); toast(`${existing ? 'Saved' : 'Created'} ${f.name}`) }} />
       )}
@@ -52,7 +57,7 @@ function FoodDialog({ food, onClose }: { food: Food | 'new'; onClose: () => void
         </div>
       )}
       <ConfirmDialog open={confirm} onClose={() => setConfirm(false)} danger confirmLabel="Delete" title={`Delete ${existing?.name}?`}
-        body="Your diary keeps every entry of it. Saved meals that include it lose this item." onConfirm={() => void remove()} />
+        body="Your diary keeps every entry of it. Saved meals and recipes that include it lose this item." onConfirm={() => void remove()} />
     </Dialog>
   )
 }
@@ -63,7 +68,7 @@ export function Foods() {
   const [tab, setTab] = useState<Tab>('foods')
   const [query, setQuery] = useState('')
   const q = useDebounced(query.trim(), 200)
-  const [open, setOpen] = useState<Food | 'new' | null>(null)
+  const [open, setOpen] = useState<Food | 'new' | 'new-recipe' | null>(null)
   const foods = useQuery({ queryKey: ['foods', 'list', tab, q], queryFn: () => searchFoods(q, { archived: tab === 'archived', limit: 200 }), enabled: tab !== 'meals' })
   const meals = useQuery({ queryKey: ['templates'], queryFn: listTemplates, enabled: tab === 'meals' })
 
@@ -76,7 +81,10 @@ export function Foods() {
       <div className="page-top mx-auto max-w-3xl px-4 pb-32 lg:px-6 lg:pb-8">
         <div className="rise mb-5 flex items-center justify-between gap-3">
           <h1 className="text-[28px] font-semibold leading-tight">Foods</h1>
-          <button onClick={() => setOpen('new')} className="bg-accent flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-on-accent"><IconPlus size={16} /> New food</button>
+          <div className="flex gap-2">
+            <button onClick={() => setOpen('new-recipe')} className="flex items-center gap-1.5 rounded-lg border border-line px-4 py-2 text-sm hover:bg-hover"><IconPlus size={16} /> New recipe</button>
+            <button onClick={() => setOpen('new')} className="bg-accent flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-on-accent"><IconPlus size={16} /> New food</button>
+          </div>
         </div>
 
         <div className="mb-4 flex gap-1.5" role="tablist">
