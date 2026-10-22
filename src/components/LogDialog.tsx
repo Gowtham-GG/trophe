@@ -1,11 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { daySummary, deleteEntry, fetchDayEntries, logFood, logQuick } from '@/api/diary'
+import { daySummary, logQuick } from '@/api/diary'
 import { ruleMessage } from '@/api/errors'
 import { fetchServings, frequentFoods, recentFoods, searchFoods } from '@/api/foods'
 import { saveExternalFood, searchOnline, SOURCE_LABEL, usdaFood } from '@/api/online'
 import { logQuickLine } from '@/api/quickLine'
-import { listTemplates, logTemplate } from '@/api/templates'
+import { listTemplates } from '@/api/templates'
+import { diaryWriter, planWriter, type Writer } from '@/api/writers'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useDebounced } from '@/hooks/useDebounced'
@@ -48,9 +49,11 @@ function FoodRow({ name, brand, detail, onPick, onRepeat }: { name: string; bran
 
 /**
  * The food logger: search your foods (or pick from recent / most-logged / saved meals), choose an amount, log.
- * It stays open after each item so a whole meal can be logged in one go.
+ * It stays open after each item so a whole meal can be logged in one go. With `plan`, the same dialog plans food
+ * for a day instead of logging it (the meal plan).
  */
-export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; meal: string; onClose: () => void }) {
+export function LogDialog({ day, meal: initialMeal, plan = false, onClose }: { day: string; meal: string; plan?: boolean; onClose: () => void }) {
+  const w = plan ? planWriter : diaryWriter
   const { timezone } = useSettings()
   const { toast, confirm } = useToast()
   const qc = useQueryClient()
@@ -100,7 +103,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   const frequent = useQuery({ queryKey: ['foods', 'frequent', null], queryFn: () => frequentFoods(null, 8), enabled: step.kind === 'pick' && !q })
   const templates = useQuery({ queryKey: ['templates'], queryFn: listTemplates, enabled: step.kind === 'pick' && !q })
 
-  const refresh = () => { void qc.invalidateQueries({ queryKey: ['diary'] }); void qc.invalidateQueries({ queryKey: ['foods'] }) }
+  const refresh = () => { for (const key of ['diary', 'foods', 'plan']) void qc.invalidateQueries({ queryKey: [key] }) }
   const back = () => { setStep({ kind: 'pick' }); setTimeout(() => searchRef.current?.focus(), 0) }
 
   /**
@@ -108,6 +111,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
    * Full-screen or a notification, per the device's setting. `kcal` null: worked out from the day's totals.
    */
   const celebrate = async (title: string, kcal: number | null, toDay: string, toMeal: string, undo: () => void, before?: number) => {
+    if (plan) return toast(`Planned ${title} for ${mealLabel(toMeal).toLowerCase()}, ${formatDayHeading(toDay, timezone)}`, { action: { label: 'Undo', onClick: undo } })
     const s = await daySummary(toDay).catch(() => null)
     const eaten = s?.totals.kcal ?? null, goal = s?.goal?.kcal ?? null
     const added = kcal ?? (eaten != null && before != null ? eaten - before : null)
@@ -128,7 +132,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   const saved = (name: string, kcal: number, id: string) => {
     refresh()
     setAdded((a) => ({ n: a.n + 1, kcal: a.kcal + kcal }))
-    void celebrate(name, kcal, day, meal, () => void deleteEntry(id).then(() => { refresh(); setAdded((a) => ({ n: a.n - 1, kcal: a.kcal - kcal })) }))
+    void celebrate(name, kcal, day, meal, () => void w.remove([id]).then(() => { refresh(); setAdded((a) => ({ n: a.n - 1, kcal: a.kcal - kcal })) }))
     setQuery('')
     back()
   }
@@ -138,13 +142,13 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
     const toDay = line.day ?? day, toMeal = line.meal ?? meal
     setLineBusy(true)
     try {
-      const entries = await logQuickLine(lineItems.map((x) => x.item), toDay, toMeal)
+      const entries = await logQuickLine(lineItems.map((x) => x.item), toDay, toMeal, w)
       const kcal = entries.reduce((sum, e) => sum + e.kcal, 0)
       refresh()
       setAdded((a) => ({ n: a.n + entries.length, kcal: a.kcal + kcal }))
       const title = entries.length === 1 ? entries[0].name : `${entries.length} items: ${entries.map((e) => e.name).join(', ')}`
       void celebrate(title.length > 70 ? `${title.slice(0, 68)}…` : title, kcal, toDay, toMeal,
-        () => void Promise.all(entries.map((e) => deleteEntry(e.id))).then(() => { refresh(); setAdded((a) => ({ n: a.n - entries.length, kcal: a.kcal - kcal })) }))
+        () => void w.remove(entries.map((e) => e.id)).then(() => { refresh(); setAdded((a) => ({ n: a.n - entries.length, kcal: a.kcal - kcal })) }))
       setQuery('')
       setDropped([])
     } catch (err) { toast(ruleMessage(err, 'Couldn’t log that.'), { kind: 'error' }) } finally { setLineBusy(false); searchRef.current?.focus() }
@@ -152,23 +156,21 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
 
   const repeat = async (s: SuggestedFood) => {
     try {
-      const e = await logFood({ day, meal, food_id: s.id, grams: s.last_grams, serving_label: s.last_serving_label, serving_qty: s.last_serving_qty })
+      const [e] = await w.foods([{ day, meal, food_id: s.id, grams: s.last_grams, serving_label: s.last_serving_label, serving_qty: s.last_serving_qty }])
       saved(e.name, e.kcal, e.id)
     } catch (err) { toast(ruleMessage(err, 'Couldn’t log that.'), { kind: 'error' }) }
   }
 
   const logSavedMeal = async (id: string, name: string) => {
     try {
-      const before = (await daySummary(day).catch(() => null))?.totals.kcal
-      const n = await logTemplate(id, day, meal)
+      const before = plan ? undefined : (await daySummary(day).catch(() => null))?.totals.kcal
+      const n = await w.template(id, day, meal)
       refresh()
-      if (!n) return toast(`${name} has no foods left to log.`)
+      if (!n) return toast(`${name} has no foods left to ${plan ? 'plan' : 'log'}.`)
       setAdded((a) => ({ n: a.n + n, kcal: a.kcal }))
-      // a saved meal's entries are the newest n of this meal: Undo takes them back
-      void celebrate(`${name} (${n} item${n === 1 ? '' : 's'})`, null, day, meal, () => void fetchDayEntries(day).then((all) => {
-        const mine = all.filter((e) => e.meal === meal).sort((a, b) => b.logged_at.localeCompare(a.logged_at)).slice(0, n)
-        return Promise.all(mine.map((e) => deleteEntry(e.id)))
-      }).then(() => { refresh(); setAdded((a) => ({ n: a.n - n, kcal: a.kcal })) }), before)
+      // a saved meal's items are the newest n of this meal: Undo takes them back
+      void celebrate(`${name} (${n} item${n === 1 ? '' : 's'})`, null, day, meal,
+        () => void w.newest(day, meal, n).then((ids) => w.remove(ids)).then(() => { refresh(); setAdded((a) => ({ n: a.n - n, kcal: a.kcal })) }), before)
     } catch { toast('Couldn’t log that meal.', { kind: 'error' }) }
   }
 
@@ -180,10 +182,10 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
   }
 
   return (
-    <Dialog open onClose={onClose} title="Log food" wide closable>
+    <Dialog open onClose={onClose} title={plan ? 'Plan food' : 'Log food'} wide closable>
       {/* where it goes: the meal is a tap away; the day is shown when it isn't today */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5 pr-8">
-        <span className="label-caps mr-1">Log to</span>
+        <span className="label-caps mr-1">{plan ? 'Plan for' : 'Log to'}</span>
         {MEALS.map((m) => (
           <button key={m.id} onClick={() => setMeal(m.id)} aria-pressed={meal === m.id}
             className={`rounded-full px-3 py-1 text-sm ${meal === m.id ? 'bg-accent text-on-accent font-semibold' : 'bg-panel text-muted hover:bg-hover hover:text-ink'}`}>{m.label}</button>
@@ -213,7 +215,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
 
           <div className="mt-3 max-h-[50vh] min-h-40 overflow-y-auto">
             {showLine && (
-              <QuickLinePreview items={lineItems} day={line.day ?? day} meal={line.meal ?? meal} busy={lineBusy}
+              <QuickLinePreview items={lineItems} day={line.day ?? day} meal={line.meal ?? meal} busy={lineBusy} plan={plan}
                 onDrop={(key) => setDropped((d) => [...d, key])} onSearch={(text) => { setQuery(text); searchRef.current?.focus() }} onLog={() => void logLine()} />
             )}
             {q ? (
@@ -298,7 +300,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <button onClick={() => setStep({ kind: 'new', name: showLine ? '' : query.trim() })} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-accent hover:bg-hover"><IconPlus size={16} /> New food{query.trim() && !showLine && ` “${query.trim()}”`}</button>
-            <button onClick={() => setStep({ kind: 'quick' })} className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-hover hover:text-ink">Quick add calories</button>
+            {!plan && <button onClick={() => setStep({ kind: 'quick' })} className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-hover hover:text-ink">Quick add calories</button>}
             <span className="flex-1" />
             {added.n > 0 && <span className="text-xs text-muted tabular-nums">{added.n} added{added.kcal > 0 && ` · ${fmtKcal(added.kcal)} kcal`}</span>}
             <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm hover:bg-hover">Done</button>
@@ -306,7 +308,7 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
         </div>
       )}
 
-      {step.kind === 'amount' && <AmountStep picked={step.picked} meal={meal} day={day} onBack={back} onLogged={saved} />}
+      {step.kind === 'amount' && <AmountStep picked={step.picked} meal={meal} day={day} writer={w} onBack={back} onLogged={saved} />}
 
       {step.kind === 'new' && (
         <div>
@@ -341,7 +343,7 @@ function StepHeader({ title, sub, onBack }: { title: string; sub?: string | null
 }
 
 /** Pick how much, see the numbers update live, log. */
-function AmountStep({ picked, meal, day, onBack, onLogged }: { picked: Picked; meal: string; day: string; onBack: () => void; onLogged: (name: string, kcal: number, id: string) => void }) {
+function AmountStep({ picked, meal, day, writer, onBack, onLogged }: { picked: Picked; meal: string; day: string; writer: Writer; onBack: () => void; onLogged: (name: string, kcal: number, id: string) => void }) {
   const { toast } = useToast()
   const servings = useQuery({ queryKey: ['foods', 'servings', picked.food.id], queryFn: () => fetchServings(picked.food.id) })
   const [chosen, setAmount] = useState<AmountState | null>(null)
@@ -359,7 +361,7 @@ function AmountStep({ picked, meal, day, onBack, onLogged }: { picked: Picked; m
     if (!resolved || busy) return
     setBusy(true)
     try {
-      const entry = await logFood({ day, meal, food_id: picked.food.id, ...resolved })
+      const [entry] = await writer.foods([{ day, meal, food_id: picked.food.id, ...resolved }])
       onLogged(entry.name, entry.kcal, entry.id)
     } catch (err) { toast(ruleMessage(err, 'Couldn’t log that.'), { kind: 'error' }); setBusy(false) }
   }
@@ -375,7 +377,7 @@ function AmountStep({ picked, meal, day, onBack, onLogged }: { picked: Picked; m
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onBack} className="rounded-lg px-4 py-2 text-sm hover:bg-hover">Back</button>
         <button disabled={!resolved || busy} className="bg-accent rounded-lg px-5 py-2 text-sm font-semibold text-on-accent">
-          {busy ? 'Logging…' : `Log${preview ? ` ${fmtKcal(preview.kcal)} kcal` : ''} to ${mealLabel(meal)}`}
+          {busy ? 'Saving…' : `${writer.plan ? 'Plan' : 'Log'}${preview ? ` ${fmtKcal(preview.kcal)} kcal` : ''} ${writer.plan ? 'for' : 'to'} ${mealLabel(meal)}`}
         </button>
       </div>
     </form>

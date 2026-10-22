@@ -111,6 +111,22 @@ export interface MicrosSummary { logged_days: number; entries: number; with_micr
 export interface Fast { id: string; started_at: string; ended_at: string | null; target_hours: number }
 export interface FastingStats { count: number; reached: number; avg_hours: number | null; longest_hours: number | null }
 
+/** A planned food (meal plans): like a diary entry, but its numbers come from the food until it's logged. */
+export interface PlanItem {
+  id: string
+  day: string
+  meal: string
+  food_id: string
+  grams: number
+  serving_label: string | null
+  serving_qty: number | null
+  position: number
+  created_at: string
+  food: Pick<Food, 'name' | 'brand' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'>
+}
+export interface PlanDay { day: string; items: number; kcal: number; protein_g: number; carbs_g: number; fat_g: number; goal_kcal: number | null }
+export interface GroceryItem { food_id: string; name: string; brand: string | null; grams: number; for_recipes: string[]; serving_label: string | null; serving_grams: number | null; checked: boolean }
+
 /** A logged item: nutrients are this entry's own totals (copied when logged). */
 export interface DiaryEntry {
   id: string

@@ -13,8 +13,8 @@ const HINT: Partial<Record<QItem['basis'], string>> = { last: 'as last time', me
  * What a typed line will log: each food with its amount and calories, things it didn't recognise (tap to search),
  * and where it goes. Enter in the search box (or the button) logs it all.
  */
-export function QuickLinePreview({ items, day, meal, busy, onDrop, onSearch, onLog }: {
-  items: { key: string; item: QItem<QuickCandidate> }[]; day: string; meal: string; busy: boolean
+export function QuickLinePreview({ items, day, meal, busy, plan = false, onDrop, onSearch, onLog }: {
+  items: { key: string; item: QItem<QuickCandidate> }[]; day: string; meal: string; busy: boolean; plan?: boolean
   onDrop: (key: string) => void; onSearch: (query: string) => void; onLog: () => void
 }) {
   const { timezone } = useSettings()
@@ -47,7 +47,7 @@ export function QuickLinePreview({ items, day, meal, busy, onDrop, onSearch, onL
       <div className="mt-2 flex flex-wrap items-center justify-end gap-2 px-1">
         <span className="mr-auto text-xs text-faint">{MEALS.find((m) => m.id === meal)?.label ?? meal} · {formatDayHeading(day, timezone)}</span>
         <button onClick={onLog} disabled={!ok.length || busy} className="bg-accent rounded-lg px-4 py-2 text-sm font-semibold text-on-accent">
-          {busy ? 'Logging…' : `Log ${ok.length} item${ok.length === 1 ? '' : 's'} · ${fmtKcal(total)} kcal`}
+          {busy ? 'Saving…' : `${plan ? 'Plan' : 'Log'} ${ok.length} item${ok.length === 1 ? '' : 's'} · ${fmtKcal(total)} kcal`}
         </button>
       </div>
     </div>

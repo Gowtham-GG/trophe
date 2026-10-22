@@ -529,6 +529,43 @@ begin
   perform t.logout();
 end $$;
 
+-- ========================================================== 19. meal plans ==
+do $$
+declare r uuid; spinach uuid; paneer uuid; tpl uuid;
+begin
+  perform t.login('88888888-0000-0000-0000-000000000008');
+  select id into r from trophe.foods where name = 'Palak paneer';
+  select id into spinach from trophe.foods where name = 'Spinach';
+  select id into paneer from trophe.foods where name = 'Paneer';
+  -- half the palak paneer pot (400 g cooked: 300 g spinach + 100 g paneer) and a little extra paneer for lunch, spinach at dinner
+  insert into trophe.plan_items (day, meal, food_id, grams, position) values
+    ('2026-11-02', 'lunch', r, 200, 0), ('2026-11-02', 'lunch', paneer, 50, 1), ('2026-11-02', 'dinner', spinach, 100, 0);
+  perform t.ok((select string_agg(concat_ws('/', name, grams, array_to_string(for_recipes, '+'), checked), ', ') from trophe.grocery_list('2026-11-02', '2026-11-08'))
+               = 'Paneer/100/Palak paneer/f, Spinach/250/Palak paneer/f', 'groceries: recipes opened into ingredients for the share planned');
+  insert into trophe.grocery_checks (list_key, food_id) values ('2026-11-02..2026-11-08', paneer);
+  perform t.ok((select checked from trophe.grocery_list('2026-11-02', '2026-11-08') where name = 'Paneer'), 'a ticked item stays ticked on that list');
+  perform t.ok(not (select checked from trophe.grocery_list('2026-11-02', '2026-11-09') where name = 'Paneer'), '... and only on that list');
+  perform t.ok(t.throws($q$ insert into trophe.grocery_checks (list_key, food_id) values ('next week', gen_random_uuid()) $q$), 'a list is a date range');
+
+  perform t.ok((select string_agg(items::text, ',' order by day) from trophe.plan_days('2026-11-02', '2026-11-03')) = '3,0'
+               and (select kcal from trophe.plan_days('2026-11-02', '2026-11-02')) > 0, 'plan days: items and calories per day');
+
+  perform t.ok(trophe.log_plan('2026-11-02', 'lunch') = 2, 'logging a planned meal');
+  perform t.ok((select count(*) from trophe.diary_entries where day = '2026-11-02' and meal = 'lunch') = 2
+               and (select count(*) from trophe.plan_items where day = '2026-11-02') = 1, '... moves its items into the diary; the rest stay planned');
+  perform t.ok((select kcal from trophe.diary_entries where day = '2026-11-02' and food_id = paneer) = 132.5, 'logged from the plan, nutrients are copied as always');
+
+  tpl := trophe.save_meal_template('Palak lunch', '2026-11-02', 'lunch');
+  perform t.ok(trophe.plan_template(tpl, '2026-11-04', 'dinner') = 2, 'a saved meal can be planned');
+  perform t.ok((select count(*) from trophe.plan_items where day = '2026-11-04' and meal = 'dinner') = 2, '... into that day and meal');
+  perform t.logout();
+
+  perform t.login('cccccccc-0000-0000-0000-000000000003');
+  perform t.ok(not exists (select 1 from trophe.grocery_list('2026-11-01', '2026-11-30')) and trophe.log_plan('2026-11-04') = 0
+               and t.n('select count(*) from trophe.plan_items') = 0, 'another user sees and logs none of it');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

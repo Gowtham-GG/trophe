@@ -6,7 +6,7 @@ import { useHotkeys } from '@/hooks/useHotkeys'
 import { useOnline } from '@/hooks/useOnline'
 import { Brand } from './Brand'
 import { Dialog } from './Dialog'
-import { IconClock, IconDiary, IconFood, IconMore, IconPlus, IconProgress, IconSettings, IconToday } from './icons'
+import { IconCalendar, IconClock, IconDiary, IconFood, IconMore, IconPlus, IconProgress, IconSettings, IconToday } from './icons'
 
 function SignOutIcon() {
   return (
@@ -46,6 +46,7 @@ export function Shell() {
   const moreItems: [string, string, React.ReactNode, boolean][] = [
     ['/progress', 'Progress', <IconProgress key="p" size={18} />, true],
     ['/foods', 'Foods', <IconFood key="f" size={18} />, true],
+    ['/plan', 'Meal plan & groceries', <IconCalendar key="pl" size={18} />, false],
     ['/fasting', 'Fasting', <IconClock key="fa" size={18} />, false],
     ['/settings', 'Settings & themes', <IconSettings key="se" size={18} />, false],
   ]
