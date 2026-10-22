@@ -1,6 +1,7 @@
 // Row shapes of the `trophe` schema, as PostgREST returns them (numeric → number).
 export type { ThemePref } from '@/lib/themes'
 import type { ThemePref } from '@/lib/themes'
+import type { Micros } from '@/lib/micros'
 
 export type Sex = 'male' | 'female'
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
@@ -32,6 +33,8 @@ export interface Food {
   fiber_g: number | null
   sugar_g: number | null
   sodium_mg: number | null
+  /** per 100 g; see src/lib/micros.ts. Null when the food lists none */
+  micros: Micros | null
   /** recipes only: the whole pot after cooking (null = the raw total), and how many portions it makes */
   recipe_cooked_g: number | null
   recipe_portions: number | null
@@ -102,6 +105,9 @@ export interface NutritionStats {
 
 export interface Streaks { logging_current: number; logging_best: number; target_current: number; target_best: number }
 
+/** micros_summary(): averages per logged day over a range, and how many entries carried micronutrient data. */
+export interface MicrosSummary { logged_days: number; entries: number; with_micros: number; sugar_g: number | null; sodium_mg: number | null; micros: Micros }
+
 /** A logged item: nutrients are this entry's own totals (copied when logged). */
 export interface DiaryEntry {
   id: string
@@ -120,6 +126,8 @@ export interface DiaryEntry {
   fiber_g: number | null
   sugar_g: number | null
   sodium_mg: number | null
+  /** this entry's own micronutrients (copied when logged) */
+  micros: Micros | null
   position: number
   logged_at: string
 }

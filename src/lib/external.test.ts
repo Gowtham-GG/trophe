@@ -70,6 +70,19 @@ describe('shared', () => {
   })
 })
 
+describe('micronutrients', () => {
+  it('USDA: by nutrient number, already in mg / µg', () => {
+    expect(fromUsda(usdaFood as UsdaFood)!.micros).toEqual({
+      iron_mg: 0.26, calcium_mg: 5, potassium_mg: 358, magnesium_mg: 27, zinc_mg: 0.15, vitamin_a_ug: 3, vitamin_c_mg: 8.7, vitamin_d_ug: 0, vitamin_b12_ug: 0, folate_ug: 20,
+    })
+  })
+  it('Open Food Facts: grams per 100 g, converted; none listed is null', () => {
+    const f = fromOff({ code: '8901262010016', product_name: 'Milk', nutriments: { 'energy-kcal_100g': 62, calcium_100g: 0.12, 'vitamin-d_100g': 0.0000011, 'vitamin-c_100g': 'x' } })!
+    expect(f.micros).toEqual({ calcium_mg: 120, vitamin_d_ug: 1.1 })
+    expect(fromOff({ code: '8901262010016', product_name: 'Water', nutriments: { 'energy-kcal_100g': 0 } })!.micros).toBeNull()
+  })
+})
+
 describe('barcodes', () => {
   it('accepts valid EAN-13, UPC-A, EAN-8 and GTIN-14, with spaces or dashes', () => {
     expect(normaliseBarcode('8901262010016')).toBe('8901262010016') // Amul butter

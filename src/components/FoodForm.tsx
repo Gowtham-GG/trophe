@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { createFood, saveServings, updateFood, type FoodInput } from '@/api/foods'
 import { ruleMessage } from '@/api/errors'
+import { MICROS, type MicroKey, type Micros } from '@/lib/micros'
 import { kcalFromMacros } from '@/lib/nutrition'
 import type { Food, FoodServing } from '@/types/db'
 import { IconPlus, IconX } from './icons'
@@ -26,6 +27,7 @@ export function FoodForm({ food, servings = [], initialName = '', barcode, onSav
     kcal: str(food?.kcal), protein_g: str(food?.protein_g), carbs_g: str(food?.carbs_g), fat_g: str(food?.fat_g),
     fiber_g: str(food?.fiber_g), sugar_g: str(food?.sugar_g), sodium_mg: str(food?.sodium_mg),
   })
+  const [mv, setMv] = useState<Record<string, Num>>(() => Object.fromEntries(MICROS.map((m) => [m.key, str(food?.micros?.[m.key])])))
   const [rows, setRows] = useState(servings.map((s) => ({ label: s.label, grams: String(s.grams) })))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,6 +51,14 @@ export function FoodForm({ food, servings = [], initialName = '', barcode, onSav
       kcal, protein_g: per100('protein_g') ?? 0, carbs_g: per100('carbs_g') ?? 0, fat_g: per100('fat_g') ?? 0,
       fiber_g: per100('fiber_g'), sugar_g: per100('sugar_g'), sodium_mg: per100('sodium_mg'),
     }
+    const micros: Micros = {}
+    for (const m of MICROS) {
+      const raw = num(mv[m.key])
+      if (raw == null) continue
+      if (!(raw >= 0)) return setError(`Check ${m.label.toLowerCase()}.`)
+      micros[m.key as MicroKey] = Math.round(raw * factor * 1000) / 1000
+    }
+    input.micros = Object.keys(micros).length ? micros : null
     if (input.protein_g + input.carbs_g + input.fat_g > 105) return setError('Protein + carbs + fat can’t be more than 100 g per 100 g.')
     const list = rows.map((r) => ({ label: r.label.trim(), grams: num(r.grams) ?? 0 })).filter((r) => r.label && r.grams > 0)
     if (basis === 'serving' && basisLabel.trim() && !list.some((r) => r.label === basisLabel.trim())) list.unshift({ label: basisLabel.trim(), grams: num(basisGrams)! })
@@ -109,6 +119,18 @@ export function FoodForm({ food, servings = [], initialName = '', barcode, onSav
             {field('fiber_g', 'Fibre')}
             {field('sugar_g', 'Sugar')}
             {field('sodium_mg', 'Sodium', 'mg')}
+          </div>
+          <p className="mb-2 mt-4 text-xs text-muted">Vitamins and minerals, as on the label (or leave them empty)</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {MICROS.map((m) => (
+              <label key={m.key} className="block">
+                <span className="mb-1 block text-xs text-muted">{m.label}</span>
+                <span className="relative block">
+                  <input inputMode="decimal" value={mv[m.key]} onChange={(e) => setMv({ ...mv, [m.key]: e.target.value })} className="field pr-9 tabular-nums" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{m.unit}</span>
+                </span>
+              </label>
+            ))}
           </div>
         </details>
         {mismatch && <p className="mt-2 text-xs text-important">Heads up: the macros add up to ~{Math.round(macroKcal)} kcal, not {kcal}. Fine if the label says so.</p>}

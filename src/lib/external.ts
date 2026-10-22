@@ -16,10 +16,20 @@ export interface ExternalFood {
   fiber_g: number | null
   sugar_g: number | null
   sodium_mg: number | null
+  /** per 100 g, the keys of src/lib/micros.ts (mg / µg); null when the source lists none */
+  micros?: Record<string, number> | null
   servings: { label: string; grams: number }[]
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
+const r3 = (n: number) => Math.round(n * 1000) / 1000
+
+/** Build a micros object from (key, value) pairs, dropping missing and impossible values. */
+function microsFrom(pairs: [string, number | null | undefined][]): Record<string, number> | null {
+  const out: Record<string, number> = {}
+  for (const [k, v] of pairs) if (v != null && Number.isFinite(v) && v >= 0 && v <= 100000) out[k] = r3(v)
+  return Object.keys(out).length ? out : null
+}
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null)
 const clean = (s: unknown, max: number): string => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '')
 
@@ -59,6 +69,13 @@ export function fromOff(p: OffProduct): ExternalFood | null {
     fiber_g: num(n['fiber_100g']) == null ? null : r1(num(n['fiber_100g'])!),
     sugar_g: num(n['sugars_100g']) == null ? null : r1(num(n['sugars_100g'])!),
     sodium_mg: sodiumG == null ? null : r1(sodiumG * 1000),
+    // Open Food Facts gives every nutrient in grams per 100 g
+    micros: microsFrom(([
+      ['iron_mg', 'iron_100g', 1e3], ['calcium_mg', 'calcium_100g', 1e3], ['potassium_mg', 'potassium_100g', 1e3],
+      ['magnesium_mg', 'magnesium_100g', 1e3], ['zinc_mg', 'zinc_100g', 1e3], ['vitamin_a_ug', 'vitamin-a_100g', 1e6],
+      ['vitamin_c_mg', 'vitamin-c_100g', 1e3], ['vitamin_d_ug', 'vitamin-d_100g', 1e6], ['vitamin_b12_ug', 'vitamin-b12_100g', 1e6],
+      ['folate_ug', 'vitamin-b9_100g', 1e6],
+    ] as const).map(([k, field, f]) => [k, num(n[field]) == null ? null : num(n[field])! * f])),
     servings: servingG && servingG > 0 && servingG <= 5000 && !weightOnly ? [{ label: servingLabel, grams: r1(servingG) }] : [],
   }
   return plausible(f) ? f : null
@@ -101,6 +118,12 @@ export function fromUsda(f: UsdaFood): ExternalFood | null {
     source: 'usda', external_id: String(f.fdcId), name: clean(f.description, 120), brand: clean(f.brandOwner, 120) || null, barcode: null,
     kcal: r1(kcal), protein_g: r1(n.get('203') ?? 0), carbs_g: r1(n.get('205') ?? 0), fat_g: r1(n.get('204') ?? 0),
     fiber_g: n.has('291') ? r1(n.get('291')!) : null, sugar_g: n.has('269') ? r1(n.get('269')!) : null, sodium_mg: n.has('307') ? r1(n.get('307')!) : null,
+    // USDA nutrient numbers, already in mg / µg per 100 g
+    micros: microsFrom([
+      ['iron_mg', n.get('303')], ['calcium_mg', n.get('301')], ['potassium_mg', n.get('306')], ['magnesium_mg', n.get('304')],
+      ['zinc_mg', n.get('309')], ['vitamin_a_ug', n.get('320')], ['vitamin_c_mg', n.get('401')], ['vitamin_d_ug', n.get('328')],
+      ['vitamin_b12_ug', n.get('418')], ['folate_ug', n.get('435') ?? n.get('417')],
+    ]),
     servings: (f.foodPortions ?? [])
       .map((p) => ({ label: usdaPortionLabel(p), grams: num(p.gramWeight) }))
       .filter((s): s is { label: string; grams: number } => !!s.label && s.grams != null && s.grams > 0 && s.grams <= 5000)

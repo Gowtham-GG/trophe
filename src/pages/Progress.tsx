@@ -6,6 +6,7 @@ import { InsightList } from '@/components/InsightCards'
 import { MeasurementsCard, WeightCard } from '@/components/progress/BodyCards'
 import { EatingCard, StreaksCard } from '@/components/progress/EatingCards'
 import { MaintenanceCard } from '@/components/progress/MaintenanceCard'
+import { MicrosCard } from '@/components/MicrosCard'
 import { useSettings } from '@/contexts/SettingsContext'
 import { addDays, todayKey } from '@/lib/dates'
 
@@ -63,6 +64,7 @@ export function Progress() {
         <MaintenanceCard today={to} />
         <EatingCard from={from} to={to} />
         <StreaksCard today={to} />
+        <MicrosCard from={from} to={to} />
         <MeasurementsCard from={from} to={to} />
         <WaterSummary from={from} to={to} />
       </div>

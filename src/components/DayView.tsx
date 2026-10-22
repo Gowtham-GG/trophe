@@ -15,6 +15,7 @@ import { Dialog } from './Dialog'
 import { EntryDialog } from './EntryDialog'
 import { IconMore, IconPlus } from './icons'
 import { MacroBar, Ring } from './Ring'
+import { MicrosCard } from './MicrosCard'
 import { WaterCard } from './WaterCard'
 
 // The macro colours keep one meaning everywhere: protein = teal, carbs = accent, fat = amber.
@@ -185,6 +186,7 @@ export function DayView({ day, side }: { day: string; side?: React.ReactNode }) 
           <MealCard key={m.id} day={day} meal={m.id} label={m.label} totals={s?.meals[m.id]}
             entries={(entries.data ?? []).filter((e) => e.meal === m.id)} onEdit={setEditing} />
         ))}
+        <MicrosCard from={day} to={day} collapsed />
       </div>
       {editing && <EntryDialog entry={editing} onClose={() => setEditing(null)} />}
     </div>

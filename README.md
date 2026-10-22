@@ -33,7 +33,7 @@ is multi-user by construction even though it is built for personal use.
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | **done** |
-| 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
+| 5. Extras | Micronutrients **done**; fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | in progress |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
 ---
@@ -96,7 +96,7 @@ without a food is a quick add (typed calories).
 to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, meal)`, `goal_for(day)`,
 `save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount),
 `save_recipe(id, name, items, cooked_g, portions)`, `weight_trend(from, to)`, `weight_summary()`, `water_range(from, to)`,
-`nutrition_periods(from, to, week|month)`, `nutrition_stats(from, to)`, `streaks(today)`, `maintenance_estimate(today)`, `insights(today)`.
+`nutrition_periods(from, to, week|month)`, `nutrition_stats(from, to)`, `streaks(today)`, `maintenance_estimate(today)`, `insights(today)`, `micros_summary(from, to)`.
 
 ### Online food search
 
@@ -208,6 +208,15 @@ confirmation and the toasts are top-layer popovers mounted *inside* the open dia
 (`ToastContext`): drawn over the whole screen, and clickable (this also fixed toasts' Undo being unreachable behind the
 log dialog).
 
+### Micronutrients
+
+Iron, calcium, potassium, magnesium, zinc and vitamins A, C, D, B12 and folate live in one `micros` jsonb per food
+(per 100 g; only those keys, non-negative numbers — `micros_ok()`), and each diary entry gets its own scaled copy, so
+history stays fixed like the macros. Open Food Facts (grams per 100 g, converted) and USDA (by nutrient number) fill
+them in when they have them; recipes add them up; the food form takes them from a label. The day view (collapsed) and
+Progress (average per logged day) compare them with FDA daily values, sugar and sodium with their limits, and say how
+many logged items carried data — foods without it aren't counted, so totals are a floor.
+
 ### Recipes
 
 Foods → **New recipe**: add ingredients (your foods or Indian dishes) with amounts, optionally the cooked weight
@@ -251,6 +260,7 @@ keeps its numbers until it's saved again.
 20261022170000_trophe_12_eating_trends.sql   nutrition_periods(), nutrition_stats(), streaks()
 20261022180000_trophe_13_adaptive_target.sql goals.pace_kg_week; maintenance_estimate()
 20261022190000_trophe_14_insights.sql        insights(): the rules behind Today's insight cards
+20261022200000_trophe_15_micros.sql          micronutrients on foods and entries; micros_summary()
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -329,7 +339,7 @@ npm run lint && npm run build
 
 * **SQL suite** (`supabase/tests/trophe_tests.sql`, rolled back at the end): settings defaults and checks, upsert
   behaviour, food checks, nutrient copying and history staying fixed, goals by date, range verdicts, recent/frequent,
-  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, insight rules, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
+  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, insight rules, micronutrients, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
   anon has no access, and coexistence checks (no trigger on `auth.users`, nothing in `public`, RLS on every table).
   The runner also applies every migration twice to prove they are idempotent. It never touches your Supabase project.
 * **Integration** (`npm run test:int`): `initdb/pg_ctl`, `psql`, `podman` (or `CONTAINER_CLI=docker`) and network

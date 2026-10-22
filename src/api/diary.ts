@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase'
-import type { DaySummary, DiaryEntry, RangeDay } from '@/types/db'
+import type { DaySummary, DiaryEntry, MicrosSummary, RangeDay } from '@/types/db'
 import { toError } from './errors'
 
-const ENTRY_COLUMNS = 'id,day,meal,food_id,name,brand,grams,serving_label,serving_qty,kcal,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,position,logged_at'
+const ENTRY_COLUMNS = 'id,day,meal,food_id,name,brand,grams,serving_label,serving_qty,kcal,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,micros,position,logged_at'
 
 export async function fetchDayEntries(day: string): Promise<DiaryEntry[]> {
   const { data, error } = await supabase.from('diary_entries').select(ENTRY_COLUMNS).eq('day', day).order('position').order('logged_at')
@@ -17,6 +17,13 @@ export async function daySummary(day: string): Promise<DaySummary> {
 }
 
 /** One row per day in [from, to] with totals and the under / on / over verdict. */
+/** Micronutrients (and sugar, sodium) per logged day on average over [from, to]; one day: from = to. */
+export async function microsSummary(from: string, to: string): Promise<MicrosSummary> {
+  const { data, error } = await supabase.rpc('micros_summary', { p_from: from, p_to: to })
+  if (error) throw toError(error)
+  return data as MicrosSummary
+}
+
 export async function rangeSummary(from: string, to: string): Promise<RangeDay[]> {
   const { data, error } = await supabase.rpc('range_summary', { p_from: from, p_to: to })
   if (error) throw toError(error)

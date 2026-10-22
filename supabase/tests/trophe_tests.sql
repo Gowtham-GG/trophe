@@ -473,6 +473,41 @@ begin
   perform t.logout();
 end $$;
 
+-- ===================================================== 17. micronutrients ==
+insert into auth.users (id, email) values ('88888888-0000-0000-0000-000000000008', 'h@test');
+do $$
+declare spinach uuid; paneer uuid; r uuid; e uuid;
+begin
+  perform t.login('88888888-0000-0000-0000-000000000008');
+  insert into trophe.foods (name, kcal, protein_g, carbs_g, fat_g, micros) values ('Spinach', 23, 2.9, 3.6, 0.4, '{"iron_mg": 2.7, "vitamin_c_mg": 28}') returning id into spinach;
+  insert into trophe.foods (name, kcal, protein_g, carbs_g, fat_g, sodium_mg, micros) values ('Paneer', 265, 18, 3.5, 20, 30, '{"calcium_mg": 480}') returning id into paneer;
+  perform t.ok(t.throws($q$ insert into trophe.foods (name, kcal, micros) values ('x', 1, '{"unobtainium_mg": 1}') $q$), 'only known micronutrients');
+  perform t.ok(t.throws($q$ insert into trophe.foods (name, kcal, micros) values ('x', 1, '{"iron_mg": -1}') $q$), 'no negative amounts');
+  perform t.ok(t.throws($q$ insert into trophe.foods (name, kcal, micros) values ('x', 1, '{"iron_mg": "lots"}') $q$), 'numbers only');
+
+  insert into trophe.diary_entries (day, meal, food_id, grams) values ('2026-10-01', 'lunch', spinach, 200) returning id into e;
+  perform t.ok((select micros from trophe.diary_entries where id = e) = '{"iron_mg": 5.4, "vitamin_c_mg": 56}'::jsonb, 'an entry copies its food''s micronutrients for its grams');
+  update trophe.diary_entries set grams = 100 where id = e;
+  perform t.ok((select (micros->>'iron_mg')::numeric from trophe.diary_entries where id = e) = 2.7, 'changing grams rescales them');
+  update trophe.foods set micros = '{"iron_mg": 99}' where id = spinach;
+  perform t.ok((select (micros->>'iron_mg')::numeric from trophe.diary_entries where id = e) = 2.7, 'editing the food never changes history');
+  update trophe.foods set micros = '{"iron_mg": 2.7, "vitamin_c_mg": 28}' where id = spinach;
+
+  insert into trophe.diary_entries (day, meal, food_id, grams) values ('2026-10-01', 'dinner', paneer, 100), ('2026-10-02', 'lunch', paneer, 50);
+  insert into trophe.diary_entries (day, meal, name, kcal) values ('2026-10-02', 'snacks', 'Quick', 100);
+  perform t.ok(trophe.micros_summary('2026-10-01', '2026-10-02') = '{"logged_days": 2, "entries": 4, "with_micros": 3, "sugar_g": null, "sodium_mg": 23, "micros": {"iron_mg": 1.35, "calcium_mg": 360.00, "vitamin_c_mg": 14.00}}'::jsonb,
+               'summary: average per logged day, and how many entries carried data: ' || trophe.micros_summary('2026-10-01', '2026-10-02')::text);
+
+  r := trophe.save_recipe(null, 'Palak paneer', jsonb_build_array(jsonb_build_object('food_id', spinach, 'grams', 300), jsonb_build_object('food_id', paneer, 'grams', 100)), 400);
+  perform t.ok((select micros from trophe.foods where id = r) = '{"iron_mg": 2.025, "calcium_mg": 120.000, "vitamin_c_mg": 21.000}'::jsonb, 'recipes add up micronutrients per 100 g cooked');
+  update trophe.foods set micros = '{"iron_mg": 5.4, "vitamin_c_mg": 28}' where id = spinach;
+  perform t.ok((select (micros->>'iron_mg')::numeric from trophe.foods where id = r) = 4.05, '... and follow an ingredient''s edit');
+
+  r := trophe.save_external_food('{"source":"usda","external_id":"m1","name":"Orange","kcal":47,"micros":{"vitamin_c_mg":53.2}}');
+  perform t.ok((select micros from trophe.foods where id = r) = '{"vitamin_c_mg": 53.2}'::jsonb, 'online foods keep their micronutrients');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin
