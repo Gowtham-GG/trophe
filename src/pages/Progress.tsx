@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { waterRange } from '@/api/body'
 import { Card } from '@/components/Card'
 import { MeasurementsCard, WeightCard } from '@/components/progress/BodyCards'
+import { EatingCard, StreaksCard } from '@/components/progress/EatingCards'
 import { useSettings } from '@/contexts/SettingsContext'
 import { addDays, todayKey } from '@/lib/dates'
 
@@ -37,7 +38,7 @@ function WaterSummary({ from, to }: { from: string; to: string }) {
   )
 }
 
-/** Progress: weight with its trend, measurements, water, and (part 2) eating over time. One range scopes it all. */
+/** Progress: weight with its trend, eating over time, streaks, measurements and water. One range scopes it all. */
 export function Progress() {
   const { timezone } = useSettings()
   const [range, setRange] = useState<RangeId>(storedRange)
@@ -56,6 +57,8 @@ export function Progress() {
           ))}
         </div>
         <WeightCard from={from} to={to} />
+        <EatingCard from={from} to={to} />
+        <StreaksCard today={to} />
         <MeasurementsCard from={from} to={to} />
         <WaterSummary from={from} to={to} />
       </div>

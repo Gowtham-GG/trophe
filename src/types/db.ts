@@ -76,6 +76,32 @@ export type Measurement = { day: string } & Record<MeasureKey, number | null>
 
 export interface WaterEntry { id: string; day: string; ml: number; logged_at: string }
 
+/** nutrition_periods(): one week (from Monday) or month; averages over the days with something logged. */
+export interface NutritionPeriod {
+  period_start: string
+  days: number
+  logged_days: number
+  kcal: number | null
+  protein_g: number | null
+  carbs_g: number | null
+  fat_g: number | null
+  goal_kcal: number | null
+  on_target: number
+}
+
+/** nutrition_stats(): the whole range at once. */
+export interface NutritionStats {
+  days: number
+  logged_days: number
+  avg: { kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }
+  avg_goal_kcal: number | null
+  weekday: { kcal: number | null; days: number }
+  weekend: { kcal: number | null; days: number }
+  status: { on: number; under: number; over: number; logged: number }
+}
+
+export interface Streaks { logging_current: number; logging_best: number; target_current: number; target_best: number }
+
 /** A logged item: nutrients are this entry's own totals (copied when logged). */
 export interface DiaryEntry {
   id: string

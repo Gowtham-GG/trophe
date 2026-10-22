@@ -23,6 +23,7 @@ import * as templates from '@/api/templates'
 import { logQuickLine } from '@/api/quickLine'
 import * as recipes from '@/api/recipes'
 import * as body from '@/api/body'
+import * as trends from '@/api/trends'
 import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
 import dishes from '@/data/indian-dishes.json'
@@ -235,5 +236,23 @@ describe('body: weight trend, measurements, water', () => {
     as(A)
     expect(await body.weightTrend('2026-09-01', '2026-09-30')).toEqual([])
     expect(await body.fetchWater('2026-09-20')).toEqual([])
+  })
+})
+
+describe('eating trends', () => {
+  it('periods, stats and streaks come back in the shapes the Progress page reads', async () => {
+    const C = 'cccccccc-0000-0000-0000-00000000000c'
+    psql(`insert into auth.users(id,email) values ('${C}','c@int') on conflict do nothing`)
+    as(C)
+    await goals.saveGoal({ effective_from: '2026-08-01', kcal: 2000, protein_g: 120, carbs_g: 230, fat_g: 65, fiber_g: 28 })
+    for (const [day, kcal] of [['2026-10-12', 1950], ['2026-10-13', 2000], ['2026-10-17', 2600]] as const) {
+      await diary.logQuick({ day, meal: 'lunch', name: 'x', kcal, protein_g: 100, carbs_g: 0, fat_g: 0 })
+    }
+    expect(await trends.nutritionPeriods('2026-10-12', '2026-10-18', 'week')).toEqual([
+      { period_start: '2026-10-12', days: 7, logged_days: 3, kcal: 2183, protein_g: 100, carbs_g: 0, fat_g: 0, goal_kcal: 2000, on_target: 2 },
+    ])
+    const s = await trends.nutritionStats('2026-10-12', '2026-10-18')
+    expect(s).toMatchObject({ days: 7, logged_days: 3, avg: { kcal: 2183 }, weekday: { kcal: 1975, days: 2 }, weekend: { kcal: 2600, days: 1 }, status: { on: 2, over: 1 } })
+    expect(await trends.streaks('2026-10-14')).toEqual({ logging_current: 2, logging_best: 2, target_current: 2, target_best: 2 })
   })
 })

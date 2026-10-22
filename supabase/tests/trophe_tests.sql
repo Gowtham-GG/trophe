@@ -375,6 +375,41 @@ begin
   perform t.logout();
 end $$;
 
+-- ===================================================== 14. eating trends ==
+insert into auth.users (id, email) values ('dddddddd-0000-0000-0000-000000000004', 'd@test');
+do $$
+declare j jsonb;
+begin
+  perform t.login('dddddddd-0000-0000-0000-000000000004');
+  insert into trophe.goals (effective_from, kcal, protein_g, carbs_g, fat_g) values ('2026-08-01', 2000, 120, 220, 65);
+  -- Mon on, Tue under, Wed on, Thu on, (Fri nothing), Sat over, Sun over, Mon on, Tue on; "today" is Wednesday the 14th
+  insert into trophe.diary_entries (day, meal, name, kcal, protein_g) values
+    ('2026-10-05', 'lunch', 'x', 2000, 100), ('2026-10-06', 'lunch', 'x', 1500, 80), ('2026-10-07', 'lunch', 'x', 2100, 110),
+    ('2026-10-08', 'lunch', 'x', 2050, 90), ('2026-10-10', 'lunch', 'x', 2600, 70), ('2026-10-11', 'lunch', 'x', 2400, 60),
+    ('2026-10-12', 'lunch', 'x', 1950, 120), ('2026-10-13', 'lunch', 'x', 2000, 130);
+
+  j := trophe.nutrition_stats('2026-10-05', '2026-10-14');
+  perform t.ok((j->>'days')::int = 10 and (j->>'logged_days')::int = 8 and (j->'avg'->>'kcal')::numeric = 2075 and (j->>'avg_goal_kcal')::numeric = 2000,
+               'stats: averages count only days with something logged');
+  perform t.ok(j->'weekday' = '{"kcal": 1933, "days": 6}'::jsonb and j->'weekend' = '{"kcal": 2500, "days": 2}'::jsonb, 'stats: weekdays against weekends');
+  perform t.ok(j->'status' = '{"on": 5, "under": 1, "over": 2, "logged": 0}'::jsonb, 'stats: days on target, under and over');
+
+  perform t.ok((select string_agg(concat_ws('/', period_start, days, logged_days, kcal, goal_kcal, on_target), ',' order by period_start)
+                from trophe.nutrition_periods('2026-10-05', '2026-10-14', 'week')) = '2026-10-05/7/6/2108/2000/3,2026-10-12/3/2/1975/2000/2',
+               'weekly averages start on Monday');
+  perform t.ok((select count(*) from trophe.nutrition_periods('2026-09-20', '2026-10-14', 'month')) = 2, 'monthly periods');
+
+  perform t.ok(trophe.streaks('2026-10-14') = '{"logging_current": 4, "logging_best": 4, "target_current": 2, "target_best": 2}'::jsonb,
+               'streaks: logging and on-target, today not counted against you');
+  perform t.ok((trophe.streaks('2026-10-16')->>'logging_current')::int = 0, 'a missed day ends the current streak');
+  perform t.logout();
+
+  perform t.login('cccccccc-0000-0000-0000-000000000003');
+  perform t.ok((trophe.nutrition_stats('2026-10-05', '2026-10-14')->>'logged_days')::int = 0 and trophe.streaks('2026-10-14')->>'logging_best' = '0',
+               'another user''s days don''t count');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin
