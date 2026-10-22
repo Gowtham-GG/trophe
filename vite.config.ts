@@ -61,6 +61,8 @@ export default defineConfig(({ mode }) => {
         // App shell only. API traffic is never cached: the diary must always be fresh.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
+        // the barcode fallback (~1 MB WebAssembly) is only fetched by browsers without a built-in BarcodeDetector
+        globIgnores: ['**/zxing_reader-*', '**/ponyfill-*'],
       },
     }),
   ],

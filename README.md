@@ -30,7 +30,7 @@ is multi-user by construction even though it is built for personal use.
 |---|---|---|
 | 0. Foundation | Sign-in (shared account), Trophe. look and themes, dock navigation, settings, PWA, tests | **done** |
 | 1. Diary | Today ring + macros, meals, custom foods & servings, recent/frequent, copy meals, saved meals, quick add, goal wizard, diary calendar | **done** |
-| 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`) **done**; barcode scan, recipes | in progress |
+| 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan **done**; recipes | in progress |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks | |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | |
 | 5. Extras | Micronutrients, fasting timer, recipe import, meal plans & grocery lists, export, links to Mneme habits / Argus | |
@@ -137,6 +137,14 @@ dishes:
 * **When**: `breakfast` / `lunch` / `snacks` / `dinner` (also `morning`, `evening`, `tonight`), `yesterday`,
   `day before yesterday`, `last night`, a weekday (always the most recent past one).
 
+### Barcode scan
+
+The barcode button in the log dialog opens the camera (or takes the number typed in). A valid EAN / UPC code is
+looked up in your foods first (any written form: UPC-A, EAN-13, GTIN-14), then on Open Food Facts through
+`/api/food-search?barcode=` (copied into your foods when found), else you create the food with the barcode attached
+so the next scan finds it. Chrome on Android uses the built-in `BarcodeDetector`; other browsers load a WebAssembly
+ZXing reader (`barcode-detector`, pinned) from our own origin, never precached, only when a scan starts.
+
 ---
 
 ## 4. Coexistence with Argus and Mneme (read before touching the database)
@@ -224,7 +232,8 @@ npm run dev          # http://localhost:5173 — sign in with your Argus/Mneme a
 2. Add the two env vars from 5.4 (Production + Preview).
 3. Deploy. `vercel.json` has the SPA rewrite and hardened headers (strict **Content-Security-Policy**: `connect-src`
    allows only `*.supabase.co`, no inline scripts, camera/mic/location off; plus `nosniff` and referrer policy).
-   Phase 2 will add Open Food Facts to `connect-src` and allow the camera for barcode scanning.
+   Phase 2 allows the camera for Trophe only (`camera=(self)`) and `'wasm-unsafe-eval'` for the barcode fallback;
+   Open Food Facts is reached through our function, so `connect-src` is unchanged.
 4. Add the deployed URL to Supabase **Redirect URLs** (5.3).
 
 ---

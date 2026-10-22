@@ -6,12 +6,14 @@ export interface AmountState { unit: string; qty: number }
 
 export interface ResolvedAmount { grams: number; serving_label: string | null; serving_qty: number | null }
 
+/** Null when there's nothing to log, or more than one entry may hold (5 kg, 1000 servings: the diary's limits). */
 export function resolveAmount(a: AmountState, servings: Pick<FoodServing, 'id' | 'label' | 'grams'>[]): ResolvedAmount | null {
   if (!Number.isFinite(a.qty) || a.qty <= 0) return null
-  if (a.unit === 'g') return { grams: Math.round(a.qty * 10) / 10, serving_label: null, serving_qty: null }
+  const fits = (r: ResolvedAmount) => (r.grams > 0 && r.grams <= 5000 && (r.serving_qty == null || r.serving_qty <= 1000) ? r : null)
+  if (a.unit === 'g') return fits({ grams: Math.round(a.qty * 10) / 10, serving_label: null, serving_qty: null })
   const s = servings.find((x) => x.id === a.unit)
   if (!s) return null
-  return { grams: Math.round(s.grams * a.qty * 10) / 10, serving_label: s.label, serving_qty: a.qty }
+  return fits({ grams: Math.round(s.grams * a.qty * 10) / 10, serving_label: s.label, serving_qty: a.qty })
 }
 
 /**

@@ -29,6 +29,8 @@ export const IconDiary = mk(<><path d="M12 6.5C10 5 7.5 4.5 4 4.5v14c3.5 0 6 .5 
 export const IconProgress = mk(<path d="M4 4v16h16M7.5 15l3.5-4 3 2.5L19.5 7" />)
 /** Foods: an apple. */
 export const IconFood = mk(<><path d="M12 7.5c-1.5-1-3.5-1.3-5-.5-2.5 1.4-2.8 5-1.5 8.2C6.7 18.3 9 21 12 19.6c3 1.4 5.3-1.3 6.5-4.4 1.3-3.2 1-6.8-1.5-8.2-1.5-.8-3.5-.5-5 .5z" /><path d="M12 7.5c0-2 .8-3.5 2.5-4.5" /></>)
+/** Barcode: bars of different widths. */
+export const IconBarcode = mk(<path d="M4 6v12M7 6v12M10.5 6v12M13 6v12M16.5 6v12M20 6v12" />)
 /** Bathroom scale. */
 export const IconScale = mk(<><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M9 9.5a4 4 0 0 1 6 0M12 9.5l1-1.5" /></>)
 /** A water drop. */

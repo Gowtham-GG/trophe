@@ -1,9 +1,10 @@
 // Vercel function: food search across Open Food Facts + USDA FoodData Central, normalised to Trophe's shape.
 //   GET /api/food-search?q=paneer        → { foods: ExternalFood[], errors: { source, message }[] }
 //   GET /api/food-search?usda=173944     → { food: ExternalFood | null } (USDA detail, with portions as servings)
+//   GET /api/food-search?barcode=890…    → { food: ExternalFood | null } (Open Food Facts product by barcode)
 // Runs on Vercel (free tier), never on Supabase. Only signed-in Trophe users may call it (their Supabase token is
 // checked), so nobody else can spend the USDA key's quota. Results are public data, so the CDN may cache them.
-import { dedupe, fromOff, fromUsda, type ExternalFood, type OffProduct, type UsdaFood } from '../src/lib/external.js'
+import { barcodeVariants, dedupe, fromOff, fromUsda, normaliseBarcode, type ExternalFood, type OffProduct, type UsdaFood } from '../src/lib/external.js'
 
 // Open Food Facts asks every client to identify itself.
 const USER_AGENT = 'Trophe/0.1 (https://github.com/Gowtham-GG/trophe)'
@@ -66,6 +67,18 @@ async function usdaDetail(id: string): Promise<ExternalFood | null> {
   return fromUsda((await res.json()) as UsdaFood)
 }
 
+/** A packet by its barcode. Open Food Facts files most codes as EAN-13, so a UPC-A scan also tries the 13-digit form. */
+async function offProduct(code: string): Promise<ExternalFood | null> {
+  for (const c of barcodeVariants(code).slice(0, 2)) {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${c}?fields=${OFF_FIELDS}`, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) })
+    if (res.status === 404) continue
+    if (!res.ok) throw new Error(res.status === 429 ? 'busy, try again in a minute' : `HTTP ${res.status}`)
+    const data = (await res.json()) as { status?: number; product?: OffProduct }
+    if (data.status === 1 && data.product) return fromOff({ ...data.product, code: data.product.code || c })
+  }
+  return null
+}
+
 export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams
   if (!(await signedIn(request))) return json({ error: 'Sign in to search.' }, 401)
@@ -74,6 +87,17 @@ export async function GET(request: Request): Promise<Response> {
   if (usda) {
     if (!/^\d{1,10}$/.test(usda)) return json({ error: 'Bad id.' }, 400)
     try { return json({ food: await usdaDetail(usda) }, 200, true) } catch (e) { return json({ error: `USDA: ${(e as Error).message}` }, 502) }
+  }
+
+  const barcode = params.get('barcode')
+  if (barcode != null) {
+    const code = normaliseBarcode(barcode)
+    if (!code) return json({ error: 'That isn’t a valid barcode.' }, 400)
+    try {
+      const food = await offProduct(code)
+      // a product missing today may be added tomorrow: only answers that found one are cached
+      return json({ food }, 200, !!food)
+    } catch (e) { return json({ error: `Open Food Facts: ${(e as Error).message}` }, 502) }
   }
 
   const q = (params.get('q') ?? '').replace(/\s+/g, ' ').trim()

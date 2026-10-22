@@ -50,13 +50,16 @@ export function fromOff(p: OffProduct): ExternalFood | null {
   const brand = clean(Array.isArray(p.brands) ? p.brands[0] : (p.brands ?? '').split(',')[0], 120) || null
   const name = clean(p.product_name || p.product_name_en, 120)
   const servingG = num(p.serving_quantity)
+  const servingLabel = clean(p.serving_size, 40) || '1 serving'
+  // a "serving" that's only a weight ("100g", "100 ml") adds nothing to logging in grams
+  const weightOnly = /^\d+([.,]\d+)?\s*(g|gm|gr|grams?|ml)$/i.test(servingLabel)
   const f: ExternalFood = {
     source: 'off', external_id: code, name, brand, barcode: /^\d{6,14}$/.test(code) ? code : null,
     kcal: r1(kcal), protein_g: r1(num(n['proteins_100g']) ?? 0), carbs_g: r1(num(n['carbohydrates_100g']) ?? 0), fat_g: r1(num(n['fat_100g']) ?? 0),
     fiber_g: num(n['fiber_100g']) == null ? null : r1(num(n['fiber_100g'])!),
     sugar_g: num(n['sugars_100g']) == null ? null : r1(num(n['sugars_100g'])!),
     sodium_mg: sodiumG == null ? null : r1(sodiumG * 1000),
-    servings: servingG && servingG > 0 && servingG <= 5000 ? [{ label: clean(p.serving_size, 40) || '1 serving', grams: r1(servingG) }] : [],
+    servings: servingG && servingG > 0 && servingG <= 5000 && !weightOnly ? [{ label: servingLabel, grams: r1(servingG) }] : [],
   }
   return plausible(f) ? f : null
 }
@@ -116,4 +119,27 @@ export function dedupe(foods: ExternalFood[]): ExternalFood[] {
     seen.add(key)
     return true
   })
+}
+
+// ---------------------------------------------------------------------- barcodes --
+
+/** A GTIN's last digit checks the others (EAN-8, UPC-A, EAN-13, GTIN-14): weights 3,1,3,… from the right. */
+function checkDigitOk(code: string): boolean {
+  const digits = code.split('').map(Number)
+  const check = digits.pop()!
+  const sum = digits.reverse().reduce((s, d, i) => s + d * (i % 2 === 0 ? 3 : 1), 0)
+  return (10 - (sum % 10)) % 10 === check
+}
+
+/** The digits of a scanned or typed barcode when they form a valid EAN-8 / UPC-A / EAN-13 / GTIN-14; otherwise null. */
+export function normaliseBarcode(raw: string): string | null {
+  const code = raw.replace(/[\s-]/g, '')
+  return /^(\d{8}|\d{12,14})$/.test(code) && checkDigitOk(code) ? code : null
+}
+
+/** The same product written as UPC-A (12), EAN-13 (leading 0) or GTIN-14 (leading 00): any of them may be on file. */
+export function barcodeVariants(code: string): string[] {
+  const bare = code.replace(/^0+/, '')
+  return [...new Set([code, ...[8, 12, 13, 14].filter((n) => n >= bare.length).map((n) => bare.padStart(n, '0'))])]
+    .filter((c) => c.length >= 8 && /^(\d{8}|\d{12,14})$/.test(c))
 }

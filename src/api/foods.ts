@@ -1,3 +1,4 @@
+import { barcodeVariants } from '@/lib/external'
 import { supabase } from '@/lib/supabase'
 import type { Food, FoodServing, QuickLogFood, SuggestedFood } from '@/types/db'
 import { toError } from './errors'
@@ -18,6 +19,14 @@ export async function fetchFood(id: string): Promise<Food | null> {
 }
 
 export type FoodInput = Pick<Food, 'name' | 'brand' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g' | 'sodium_mg' | 'barcode'>
+
+/** Your food with this barcode (in any of its written forms), archived or not; the active one first. */
+export async function findFoodByBarcode(code: string): Promise<Food | null> {
+  const { data, error } = await supabase.from('foods').select(FOOD_COLUMNS).in('barcode', barcodeVariants(code))
+    .order('archived_at', { ascending: false, nullsFirst: true }).order('updated_at', { ascending: false }).limit(1)
+  if (error) throw toError(error)
+  return (data as Food[])[0] ?? null
+}
 
 export async function createFood(input: FoodInput): Promise<Food> {
   const { data, error } = await supabase.from('foods').insert(input).select(FOOD_COLUMNS).single()

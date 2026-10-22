@@ -10,6 +10,11 @@ describe('amount', () => {
     expect(resolveAmount({ unit: 's2', qty: 0 }, servings)).toBeNull()
     expect(resolveAmount({ unit: 'gone', qty: 1 }, servings)).toBeNull()
   })
+  it('refuses more than one diary entry may hold (5 kg)', () => {
+    expect(resolveAmount({ unit: 'g', qty: 5000 }, servings)?.grams).toBe(5000)
+    expect(resolveAmount({ unit: 'g', qty: 5001 }, servings)).toBeNull()
+    expect(resolveAmount({ unit: 's2', qty: 34 }, servings)).toBeNull() // 5.1 kg
+  })
   it('starts from last time, then the first serving, then 100 g', () => {
     expect(initialAmount(servings, { grams: 300, serving_label: '1 katori', serving_qty: 2 })).toEqual({ unit: 's2', qty: 2 })
     expect(initialAmount(servings, { grams: 75, serving_label: 'deleted serving', serving_qty: 1 })).toEqual({ unit: 'g', qty: 75 })

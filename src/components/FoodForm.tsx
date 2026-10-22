@@ -13,8 +13,9 @@ const str = (n: number | null | undefined, k = 1) => (n == null ? '' : String(Ma
  * Create or edit a food. Labels often give nutrition per serving, so the numbers can be typed "per 100 g" or
  * "per serving of N g" — they're stored per 100 g either way (and the serving is added to the food).
  */
-export function FoodForm({ food, servings = [], initialName = '', onSaved, onCancel }: {
-  food?: Food; servings?: FoodServing[]; initialName?: string; onSaved: (f: Food) => void; onCancel?: () => void
+export function FoodForm({ food, servings = [], initialName = '', barcode, onSaved, onCancel }: {
+  food?: Food; servings?: FoodServing[]; initialName?: string; /** a scanned code to save with a new food */ barcode?: string
+  onSaved: (f: Food) => void; onCancel?: () => void
 }) {
   const [name, setName] = useState(food?.name ?? initialName)
   const [brand, setBrand] = useState(food?.brand ?? '')
@@ -44,7 +45,7 @@ export function FoodForm({ food, servings = [], initialName = '', onSaved, onCan
     if (kcal == null || !(kcal >= 0)) return setError('Enter the calories.')
     if (kcal > 950) return setError('That’s more than 950 kcal per 100 g — check the numbers (or the serving size).')
     const input: FoodInput = {
-      name: name.trim(), brand: brand.trim() || null, barcode: food?.barcode ?? null,
+      name: name.trim(), brand: brand.trim() || null, barcode: food?.barcode ?? barcode ?? null,
       kcal, protein_g: per100('protein_g') ?? 0, carbs_g: per100('carbs_g') ?? 0, fat_g: per100('fat_g') ?? 0,
       fiber_g: per100('fiber_g'), sugar_g: per100('sugar_g'), sodium_mg: per100('sodium_mg'),
     }
@@ -131,6 +132,7 @@ export function FoodForm({ food, servings = [], initialName = '', onSaved, onCan
         <button type="button" onClick={() => setRows([...rows, { label: '', grams: '' }])} className="mt-2 flex items-center gap-1.5 text-sm text-accent"><IconPlus size={15} /> Add a serving</button>
       </div>
 
+      {(food?.barcode ?? barcode) && <p className="text-xs text-faint">Barcode {food?.barcode ?? barcode}{!food && ' is saved with it, so scanning it again finds this food'}.</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         {onCancel && <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm hover:bg-hover">Cancel</button>}

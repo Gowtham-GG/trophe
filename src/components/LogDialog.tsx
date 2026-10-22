@@ -18,14 +18,15 @@ import { describeAmount, fmtG, fmtKcal, scale } from '@/lib/nutrition'
 import type { ExternalFood } from '@/lib/external'
 import type { Food, SuggestedFood } from '@/types/db'
 import { AmountPicker } from './AmountPicker'
+import { ScanStep } from './BarcodeScanner'
 import { Dialog } from './Dialog'
 import { FoodForm } from './FoodForm'
-import { IconBack, IconPlus, IconSearch } from './icons'
+import { IconBack, IconBarcode, IconPlus, IconSearch } from './icons'
 import { NutritionLine } from './NutritionLine'
 import { QuickLinePreview } from './QuickLinePreview'
 
 type Picked = { food: Pick<Food, 'id' | 'name' | 'brand' | 'kcal' | 'protein_g' | 'carbs_g' | 'fat_g'> & { fiber_g?: number | null }; last?: SuggestedFood }
-type Step = { kind: 'pick' } | { kind: 'amount'; picked: Picked } | { kind: 'new'; name: string } | { kind: 'quick' }
+type Step = { kind: 'pick' } | { kind: 'amount'; picked: Picked } | { kind: 'new'; name: string; barcode?: string } | { kind: 'quick' } | { kind: 'scan' }
 
 const mealLabel = (id: string) => MEALS.find((m) => m.id === id)?.label ?? id
 
@@ -165,19 +166,23 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
 
       {step.kind === 'pick' && (
         <div>
-          <label className="relative block">
-            <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search foods, or type “2 roti, dal”…" aria-label="Search foods, or type what you had"
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                if (showLine) return void logLine()
-                if (results.data?.[0]) setStep({ kind: 'amount', picked: { food: results.data[0] } })
-                else if (dishResults[0]) void pickOnline(dishToExternal(dishResults[0]))
-                else setForced(query.trim()) // nothing of yours: search online now
-              }}
-              className="field pl-10" />
-          </label>
+          <div className="flex gap-2">
+            <label className="relative block min-w-0 flex-1">
+              <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <input ref={searchRef} autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search foods, or type “2 roti, dal”…" aria-label="Search foods, or type what you had"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  if (showLine) return void logLine()
+                  if (results.data?.[0]) setStep({ kind: 'amount', picked: { food: results.data[0] } })
+                  else if (dishResults[0]) void pickOnline(dishToExternal(dishResults[0]))
+                  else setForced(query.trim()) // nothing of yours: search online now
+                }}
+                className="field pl-10" />
+            </label>
+            <button onClick={() => setStep({ kind: 'scan' })} aria-label="Scan a barcode" title="Scan a barcode"
+              className="flex shrink-0 items-center justify-center rounded-xl border border-line px-3 text-muted hover:bg-hover hover:text-ink"><IconBarcode size={20} /></button>
+          </div>
 
           <div className="mt-3 max-h-[50vh] min-h-40 overflow-y-auto">
             {showLine && (
@@ -279,7 +284,15 @@ export function LogDialog({ day, meal: initialMeal, onClose }: { day: string; me
       {step.kind === 'new' && (
         <div>
           <StepHeader title="New food" onBack={back} />
-          <FoodForm initialName={step.name} onCancel={back} onSaved={(f) => { void qc.invalidateQueries({ queryKey: ['foods'] }); setStep({ kind: 'amount', picked: { food: f } }) }} />
+          <FoodForm initialName={step.name} barcode={step.barcode} onCancel={back} onSaved={(f) => { void qc.invalidateQueries({ queryKey: ['foods'] }); setStep({ kind: 'amount', picked: { food: f } }) }} />
+        </div>
+      )}
+
+      {step.kind === 'scan' && (
+        <div>
+          <StepHeader title="Scan a barcode" onBack={back} />
+          <ScanStep onFound={(food) => { void qc.invalidateQueries({ queryKey: ['foods'] }); setStep({ kind: 'amount', picked: { food } }) }}
+            onCreate={(barcode) => setStep({ kind: 'new', name: '', barcode })} />
         </div>
       )}
 

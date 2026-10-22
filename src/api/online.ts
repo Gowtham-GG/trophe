@@ -21,6 +21,11 @@ export async function usdaFood(id: string): Promise<ExternalFood | null> {
   return (await callApi<{ food: ExternalFood | null }>(`/api/food-search?usda=${encodeURIComponent(id)}`)).food
 }
 
+/** A packaged food by barcode (Open Food Facts), or null when nobody has added it yet. */
+export async function lookupBarcode(code: string): Promise<ExternalFood | null> {
+  return (await callApi<{ food: ExternalFood | null }>(`/api/food-search?barcode=${encodeURIComponent(code)}`)).food
+}
+
 /** Copy an online food into your foods (only when you pick it). Picking it again returns the same food. */
 export async function saveExternalFood(f: ExternalFood): Promise<string> {
   const { servings, ...food } = f
