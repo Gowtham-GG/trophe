@@ -33,7 +33,7 @@ is multi-user by construction even though it is built for personal use.
 | 2. Finding food | Online search (Open Food Facts + USDA), Indian dishes, quick add by typing (`2 roti dal lunch`), barcode scan, recipes | **done** |
 | 3. Body & progress | Weight with smoothed trend, water, measurements, weekly/monthly charts, streaks, weekdays vs weekends | **done** |
 | 4. Smart (no AI) | Adaptive calorie target from intake vs weight trend, insight cards, full-screen confirmations | **done** |
-| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists, recipe import, links to Mneme habits / Argus **done**; export | in progress |
+| 5. Extras | Micronutrients, fasting timer, meal plans & grocery lists, recipe import, links to Mneme habits / Argus, export & backup | **done** |
 | Deferred | AI meal logging, photo recognition, AI weekly report (would need Edge Functions) | not planned |
 
 ---
@@ -100,7 +100,7 @@ to_meal)`, `save_meal_template(name, day, meal)`, `log_meal_template(id, day, me
 `save_external_food(food, servings)`, `quick_log_foods()` (every active food with servings and last amount),
 `save_recipe(id, name, items, cooked_g, portions)`, `weight_trend(from, to)`, `weight_summary()`, `water_range(from, to)`,
 `nutrition_periods(from, to, week|month)`, `nutrition_stats(from, to)`, `streaks(today)`, `maintenance_estimate(today)`, `insights(today)`, `micros_summary(from, to)`, `fasting_stats()`, `plan_template(id, day, meal)`, `log_plan(day, meal)`,
-`plan_days(from, to)`, `grocery_list(from, to)`.
+`plan_days(from, to)`, `grocery_list(from, to)`, `export_backup()`, `restore_backup(doc)`.
 
 ### Online food search
 
@@ -221,6 +221,16 @@ them in when they have them; recipes add them up; the food form takes them from 
 Progress (average per logged day) compare them with FDA daily values, sugar and sodium with their limits, and say how
 many logged items carried data — foods without it aren't counted, so totals are a floor.
 
+### Export and backup
+
+Settings → Your data: **Download backup** (`export_backup()`: every table of yours as one JSON document, without user
+ids), the diary or weight & measurements as **CSV** (quoted per RFC 4180; cells starting with = + - @ are kept as
+text so a spreadsheet never runs them as formulas), and **Restore a backup**. `restore_backup()` adds back what the
+account lacks — table by table, references first, `on conflict do nothing` — and never changes or deletes anything
+already there, so it's safe to run twice. Columns an older backup lacks take their defaults. Restored diary entries
+keep their own numbers (the diary trigger doesn't recopy them from a food edited since; only `restore_backup` can set
+that flag, and it allows nothing a quick add doesn't).
+
 ### Recipe import
 
 New recipe → paste a recipe page's link → Import. `api/recipe-import.ts` (a Vercel function, signed-in users only)
@@ -306,6 +316,7 @@ keeps its numbers until it's saved again.
 20261022210000_trophe_16_fasting.sql         fasts; fasting_stats()
 20261022220000_trophe_17_meal_plans.sql      plan_items, grocery_checks; log_plan(), grocery_list()…
 20261022230000_trophe_18_links.sql           settings.links: Mneme habits to tick, Argus food categories
+20261022240000_trophe_19_backup.sql          export_backup(), restore_backup()
 ```
 
 **Option A – SQL editor:** paste each file, in order, into *SQL Editor → New query → Run*.
@@ -384,7 +395,7 @@ npm run lint && npm run build
 
 * **SQL suite** (`supabase/tests/trophe_tests.sql`, rolled back at the end): settings defaults and checks, upsert
   behaviour, food checks, nutrient copying and history staying fixed, goals by date, range verdicts, recent/frequent,
-  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, insight rules, micronutrients, fasting, meal plans and grocery lists, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
+  search, copying and saved meals, online foods, quick-add foods, recipes (maths, portions, ingredient edits, no nesting), weight trend and pace, measurements, water, eating averages and streaks, the maintenance estimate, insight rules, micronutrients, fasting, meal plans and grocery lists, links, export and restore, a **tenant-isolation matrix** (user B cannot read, update, delete, create or take over user A's rows),
   anon has no access, and coexistence checks (no trigger on `auth.users`, nothing in `public`, RLS on every table).
   The runner also applies every migration twice to prove they are idempotent. It never touches your Supabase project.
 * **Integration** (`npm run test:int`): `initdb/pg_ctl`, `psql`, `podman` (or `CONTAINER_CLI=docker`) and network

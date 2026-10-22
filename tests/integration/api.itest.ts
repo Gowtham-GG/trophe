@@ -25,6 +25,7 @@ import * as recipes from '@/api/recipes'
 import * as body from '@/api/body'
 import * as trends from '@/api/trends'
 import * as links from '@/api/links'
+import * as backup from '@/api/backup'
 import { habitConditions, habitDelta } from '@/lib/links'
 import type { QuickCandidate } from '@/hooks/useQuickLine'
 import { resolveAmount } from '@/lib/amount'
@@ -293,5 +294,21 @@ describe('links to Mneme and Argus (test stand-ins of their tables)', () => {
     as(A)
     expect(await links.mnemeHabits()).toEqual([])
     expect(await links.foodSpending(['22222222-0000-0000-0000-0000000000d1'], '2026-10-01', '2026-10-31')).toEqual([])
+  })
+})
+
+describe('export and restore', () => {
+  it('a backup round-trips through restore, adding back only what was lost', async () => {
+    as(B)
+    const doc = await backup.exportBackup()
+    expect(doc.app).toBe('trophe')
+    const weights = doc.tables.weigh_ins.length
+    expect(weights).toBeGreaterThan(0)
+    expect(backup.bodyCsv(doc).split('\r\n')[0]).toBe('day,kg,body_fat_pct,waist_cm,hips_cm,chest_cm,neck_cm,arm_cm,thigh_cm')
+    psql(`delete from trophe.weigh_ins where user_id = '${B}'`)
+    const added = await backup.restoreBackup(doc)
+    expect(added.weigh_ins).toBe(weights)
+    expect(Object.entries(added).filter(([k, n]) => k !== 'weigh_ins' && n > 0)).toEqual([])
+    expect((await body.weightSummary()).count).toBe(weights)
   })
 })

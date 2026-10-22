@@ -577,6 +577,46 @@ begin
   perform t.logout();
 end $$;
 
+-- ============================================================= 21. backup ==
+do $$
+declare doc jsonb; added jsonb; spinach uuid; e uuid; kcal_before numeric;
+begin
+  perform t.login('88888888-0000-0000-0000-000000000008');
+  doc := trophe.export_backup();
+  perform t.ok(doc->>'app' = 'trophe' and (doc->>'version')::int = 1
+               and (select count(*) from jsonb_object_keys(doc->'tables')) = 14, 'a backup holds every table');
+  perform t.ok(jsonb_array_length(doc->'tables'->'foods') = (select count(*) from trophe.foods)
+               and not exists (select 1 from jsonb_array_elements(doc->'tables'->'foods') f where f ? 'user_id'), '... all your rows, without user ids');
+
+  -- lose some data, and edit a food after its entries were logged
+  select id into spinach from trophe.foods where name = 'Spinach';
+  select id, kcal into e, kcal_before from trophe.diary_entries where food_id = spinach limit 1;
+  delete from trophe.diary_entries where food_id = spinach;
+  delete from trophe.plan_items;
+  update trophe.foods set kcal = 500, name = 'Spinach (renamed)' where id = spinach;
+
+  added := trophe.restore_backup(doc);
+  perform t.ok((added->>'diary_entries')::int >= 1 and (added->>'plan_items')::int >= 1 and coalesce((added->>'foods')::int, 0) = 0,
+               'restore adds back only what''s missing: ' || added::text);
+  perform t.ok((select kcal from trophe.diary_entries where id = e) = kcal_before, 'restored entries keep their own numbers, not the edited food''s');
+  perform t.ok((select name from trophe.foods where id = spinach) = 'Spinach (renamed)', 'what''s there is never changed');
+  perform t.ok(trophe.restore_backup(doc) = '{}'::jsonb or not exists (select 1 from jsonb_each_text(trophe.restore_backup(doc)) x where x.value <> '0'),
+               'restoring twice adds nothing');
+  insert into trophe.diary_entries (day, meal, food_id, grams) values ('2026-12-01', 'lunch', spinach, 100) returning id into e;
+  perform t.ok((select kcal from trophe.diary_entries where id = e) = 500, 'after a restore, logging copies from the food again');
+
+  -- an older backup without newer columns: they take their defaults
+  perform trophe.restore_backup('{"app": "trophe", "version": 1, "tables": {"water_entries": [{"id": "77777777-0000-0000-0000-000000000001", "day": "2026-12-02", "ml": 300}]}}');
+  perform t.ok((select ml from trophe.water_entries where id = '77777777-0000-0000-0000-000000000001') = 300, 'missing columns take their defaults');
+  perform t.ok(t.throws($q$ select trophe.restore_backup('{"app": "other", "tables": {}}') $q$), 'only Trophe backups');
+  perform t.ok(t.throws($q$ select trophe.restore_backup('{"app": "trophe", "version": 9, "tables": {}}') $q$), 'a backup from a newer version is refused');
+  perform t.logout();
+
+  perform t.login('cccccccc-0000-0000-0000-000000000003');
+  perform t.ok(not exists (select 1 from jsonb_array_elements(trophe.export_backup()->'tables'->'foods') f where f->>'name' = 'Spinach (renamed)'), 'a backup holds only your own rows');
+  perform t.logout();
+end $$;
+
 -- ================================================ 4. coexistence with others ==
 do $$
 begin

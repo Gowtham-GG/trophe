@@ -5,6 +5,7 @@ import { goalFor } from '@/api/goals'
 import { GoalWizard } from '@/components/GoalWizard'
 import { Card } from '@/components/Card'
 import { ConnectedApps } from '@/components/ConnectedApps'
+import { YourData } from '@/components/YourData'
 import { ThemePicker } from '@/components/ThemePicker'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -88,6 +89,8 @@ export function Settings() {
         <ConfirmationsCard />
 
         <ConnectedApps />
+
+        <YourData />
 
         <Card title="Appearance">
           <p className="mb-4 text-sm text-muted">Pick a colour theme. It follows you across devices.</p>
